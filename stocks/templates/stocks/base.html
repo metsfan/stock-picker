@@ -1,0 +1,218 @@
+{% load django_bootstrap5 %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Stock Picker - Minervini Analysis{% endblock %}</title>
+    {% bootstrap_css %}
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        .stat-card {
+            border-left: 4px solid #0d6efd;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        .search-container {
+            position: relative;
+            width: 300px;
+        }
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 0.25rem 0.25rem;
+            max-height: 400px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .search-result-item {
+            padding: 0.75rem 1rem;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            transition: background-color 0.15s;
+        }
+        .search-result-item:hover {
+            background-color: #f8f9fa;
+        }
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+        .search-result-symbol {
+            font-weight: bold;
+            color: #0d6efd;
+            font-size: 1.1rem;
+        }
+        .search-result-details {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+        .search-no-results {
+            padding: 1rem;
+            text-align: center;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{% url 'stocks:dashboard' %}">📈 Stock Picker</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'stocks:dashboard' %}">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'stocks:stock_list' %}">All Stocks</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'stocks:watchlist' %}">⭐ My Watchlist</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'stocks:stock_list' %}?filter=passing">Passing Minervini</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'stocks:stock_list' %}?filter=vcp">VCP Patterns</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{% url 'stocks:stock_list' %}?filter=stage2_vcp">Best Setups</a>
+                    </li>
+                </ul>
+                <div class="search-container">
+                    <input type="text" 
+                           id="stockSearch" 
+                           class="form-control" 
+                           placeholder="🔍 Search stocks..." 
+                           autocomplete="off">
+                    <div id="searchResults" class="search-results d-none"></div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container-fluid mt-4">
+        {% block content %}
+        {% endblock %}
+    </main>
+
+    <footer class="text-center text-muted mt-5 mb-3">
+        <small>Stock Picker - Minervini Trend Template & VCP Analysis</small>
+    </footer>
+
+    {% bootstrap_javascript %}
+    
+    <script>
+    // Stock search autocomplete
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('stockSearch');
+        const searchResults = document.getElementById('searchResults');
+        let searchTimeout;
+        
+        // Debounced search function
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = this.value.trim();
+            
+            if (query.length === 0) {
+                searchResults.classList.add('d-none');
+                searchResults.innerHTML = '';
+                return;
+            }
+            
+            // Wait 300ms after user stops typing
+            searchTimeout = setTimeout(() => performSearch(query), 300);
+        });
+        
+        async function performSearch(query) {
+            try {
+                const response = await fetch(`/api/search/?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                
+                displayResults(data.results);
+            } catch (error) {
+                console.error('Search error:', error);
+            }
+        }
+        
+        function displayResults(results) {
+            if (results.length === 0) {
+                searchResults.innerHTML = '<div class="search-no-results">No stocks found</div>';
+                searchResults.classList.remove('d-none');
+                return;
+            }
+            
+            const html = results.map(stock => {
+                const stageColors = {1: 'secondary', 2: 'success', 3: 'warning', 4: 'danger'};
+                const stageBadge = `<span class="badge bg-${stageColors[stock.stage] || 'secondary'}">Stage ${stock.stage}</span>`;
+                const rsBadge = stock.rs >= 70 
+                    ? `<span class="badge bg-success">RS ${stock.rs.toFixed(0)}</span>`
+                    : `<span class="badge bg-secondary">RS ${stock.rs.toFixed(0)}</span>`;
+                
+                return `
+                    <div class="search-result-item" data-symbol="${stock.symbol}">
+                        <div class="search-result-symbol">${stock.symbol}</div>
+                        <div class="search-result-details">
+                            $${stock.price.toFixed(2)} | ${rsBadge} ${stageBadge}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            searchResults.innerHTML = html;
+            searchResults.classList.remove('d-none');
+            
+            // Add click handlers
+            document.querySelectorAll('.search-result-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const symbol = this.dataset.symbol;
+                    window.location.href = `/stocks/${symbol}/`;
+                });
+            });
+        }
+        
+        // Close search results when clicking outside
+        document.addEventListener('click', function(e) {
+            if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+                searchResults.classList.add('d-none');
+            }
+        });
+        
+        // Handle Enter key to go to first result
+        searchInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const firstResult = searchResults.querySelector('.search-result-item');
+                if (firstResult) {
+                    const symbol = firstResult.dataset.symbol;
+                    window.location.href = `/stocks/${symbol}/`;
+                }
+            }
+        });
+        
+        // Show results again when clicking in the input (if there's a query)
+        searchInput.addEventListener('focus', function() {
+            if (this.value.trim().length > 0 && searchResults.innerHTML) {
+                searchResults.classList.remove('d-none');
+            }
+        });
+    });
+    </script>
+    
+    {% block extra_js %}
+    {% endblock %}
+</body>
+</html>

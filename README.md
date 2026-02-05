@@ -114,6 +114,32 @@ Relative Strength (RS) compares each stock's 90-day performance against a **weig
 
 The RS score (0-100) indicates how a stock performs relative to the weighted market average. A score of 70+ means the stock significantly outperforms the market. The market performance is calculated once per date and cached for efficiency across all stocks analyzed that day.
 
+### VCP (Volatility Contraction Pattern) Detection
+
+The analyzer detects Minervini's VCP pattern, which identifies stocks consolidating before potential breakouts:
+
+**VCP Characteristics:**
+- Series of price contractions (2-4 bases)
+- Each contraction is tighter than the previous
+- Volume dries up during consolidation
+- Forms higher lows (bullish sign)
+- Price consolidates near highs
+
+**VCP Score (0-100) Components:**
+| Factor | Max Points | Description |
+|--------|------------|-------------|
+| Contraction Count | 25 | More contractions = stronger pattern |
+| Tightness | 25 | Tighter latest contraction = better setup |
+| Higher Lows | 20 | Bullish pattern confirmation |
+| Volume Contraction | 20 | Volume drying up signals accumulation |
+| Near Pivot | 10 | Price close to breakout level |
+
+**VCP Score Interpretation:**
+- **70+** = High quality setup, ready for breakout
+- **60-69** = Good setup, watch for entry
+- **50-59** = Emerging pattern, needs more development
+- **<50** = Not detected as VCP
+
 ### Usage
 
 Run the analyzer on the latest available data (at 8pm daily in production):
@@ -176,6 +202,17 @@ ORDER BY relative_strength DESC
 LIMIT 50;
 ```
 
+Find VCP stocks ready for breakout:
+```sql
+SELECT symbol, close_price, vcp_score, contraction_count, 
+       latest_contraction_pct, pivot_price, relative_strength
+FROM minervini_metrics
+WHERE vcp_detected = true AND passes_minervini = true 
+  AND date = '2026-02-04'
+ORDER BY vcp_score DESC
+LIMIT 30;
+```
+
 Track a specific stock over time:
 ```sql
 SELECT date, close_price, ma_50, ma_150, ma_200, stage, passes_minervini
@@ -212,6 +249,13 @@ python query_stocks.py passing 20
 ```bash
 cd scripts
 python query_stocks.py stage 2 50
+```
+
+### Show VCP (Volatility Contraction Pattern) stocks:
+```bash
+cd scripts
+python query_stocks.py vcp 30           # Top 30 VCPs
+python query_stocks.py vcp 50 70        # Top 50 VCPs with score >= 70
 ```
 
 ### View history for a specific stock:
@@ -261,6 +305,7 @@ python query_stocks.py stats
    cd scripts
    python query_stocks.py passing 50        # All passing stocks
    python query_stocks.py stage 2 100       # Stage 2 stocks (ideal buys)
+   python query_stocks.py vcp 30 60         # VCP patterns (min score 60)
    python query_stocks.py stock TSLA 30     # Track specific stock
    python query_stocks.py stats             # Overall statistics
    ```
@@ -283,7 +328,11 @@ python run_analysis.py last 30
 - **"Today" means:** Latest available data (2 days ago), not the actual current date.
 - When running at 8pm daily, you'll get data from 2 days prior.
 
-4. **Build web app** (coming soon) to visualize the results!
+4. **View Results in Web App**:
+   ```bash
+   python manage.py runserver
+   ```
+   Then open http://localhost:8000 in your browser!
 
 ---
 
@@ -312,6 +361,31 @@ psql -h localhost -U postgres -d stocks -c "TRUNCATE TABLE minervini_metrics, st
 
 ### Schema Updates:
 When making schema changes, add them to the bottom of `setup_database.sql` with a comment and date. This maintains a migration history.
+
+---
+
+## Web Application
+
+A Django web application is included for visualizing results. See [README_WEBAPP.md](README_WEBAPP.md) for details.
+
+### Quick Start:
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start the web server
+python manage.py runserver
+```
+
+Then open **http://localhost:8000** in your browser.
+
+### Features:
+- 📊 Dashboard with statistics and top performers
+- 📋 Paginated, sortable stock list
+- 🎯 Filters: Passing Minervini, VCP patterns, Stage 2, Best Setups
+- 🎨 Color-coded badges for easy visual scanning
+- 📱 Responsive Bootstrap design
 
 ### Notes
 

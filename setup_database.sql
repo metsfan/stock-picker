@@ -57,6 +57,40 @@ CREATE INDEX IF NOT EXISTS idx_stage ON minervini_metrics(stage);
 -- Add future schema changes below this line with comments and dates
 -- ============================================================================
 
--- Example:
--- 2026-02-04: Add new column for volume analysis
--- ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS volume_analysis NUMERIC(10, 2);
+-- 2026-02-05: Add VCP (Volatility Contraction Pattern) columns
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS vcp_detected BOOLEAN DEFAULT FALSE;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS vcp_score NUMERIC(5, 2);
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS contraction_count INTEGER;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS latest_contraction_pct NUMERIC(5, 2);
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS volume_contraction BOOLEAN DEFAULT FALSE;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS pivot_price NUMERIC(10, 2);
+
+-- Index for VCP queries
+CREATE INDEX IF NOT EXISTS idx_vcp_detected ON minervini_metrics(vcp_detected);
+
+-- 2026-02-05: Add AI Analysis storage table
+CREATE TABLE IF NOT EXISTS ai_analyses (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    analysis_text TEXT NOT NULL,
+    model_used VARCHAR(100) NOT NULL,
+    generated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    data_date DATE NOT NULL,
+    UNIQUE(symbol, data_date, model_used)
+);
+
+-- Indices for AI analysis queries
+CREATE INDEX IF NOT EXISTS idx_ai_analyses_symbol ON ai_analyses(symbol);
+CREATE INDEX IF NOT EXISTS idx_ai_analyses_generated_at ON ai_analyses(generated_at DESC);
+
+-- 2026-02-05: Add Watchlist table
+CREATE TABLE IF NOT EXISTS watchlist (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL UNIQUE,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT
+);
+
+-- Index for watchlist queries
+CREATE INDEX IF NOT EXISTS idx_watchlist_symbol ON watchlist(symbol);
+CREATE INDEX IF NOT EXISTS idx_watchlist_added_at ON watchlist(added_at DESC);

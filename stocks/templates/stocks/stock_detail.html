@@ -1,0 +1,853 @@
+{% extends 'stocks/base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}{{ symbol }} - Stock Detail{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    {% csrf_token %}
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'stocks:dashboard' %}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'stocks:stock_list' %}">Stocks</a></li>
+            <li class="breadcrumb-item active">{{ symbol }}</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex align-items-center mb-4">
+        <h1 class="mb-0 me-3">{{ symbol }}</h1>
+        <button id="watchlistBtn" class="btn btn-outline-warning" title="Add to Watchlist">
+            <span id="watchlistIcon">☆</span> Watchlist
+        </button>
+    </div>
+
+    {% if metrics %}
+        <div class="row mb-4">
+            <!-- Stock Price Chart -->
+            <div class="col-lg-8 mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">📈 Stock Price Chart</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Date Range Filters -->
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="startDate" class="form-label">From Date:</label>
+                                <input type="date" id="startDate" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="endDate" class="form-label">To Date:</label>
+                                <input type="date" id="endDate" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">&nbsp;</label>
+                                <div>
+                                    <button id="applyDateFilter" class="btn btn-sm btn-primary">Apply Filter</button>
+                                    <button id="resetDateFilter" class="btn btn-sm btn-secondary">Reset</button>
+                                    <button id="resetZoom" class="btn btn-sm btn-outline-secondary">Reset Zoom</button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Chart Canvas -->
+                        <canvas id="stockChart" style="max-height: 500px;"></canvas>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                💡 <strong>Tip:</strong> Scroll to zoom, drag to pan. Use buttons above to filter by date or reset zoom.
+                            </small>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <a href="https://robinhood.com/stocks/{{ symbol }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                            Open in Robinhood →
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Metrics -->
+            <div class="col-lg-4 mb-4">
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">📊 Current Metrics</h5>
+                        <small>{{ latest_date|date:"F d, Y" }}</small>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>Price:</strong></td>
+                                <td class="text-end">${{ metrics.close_price|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Stage:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.stage == 1 %}
+                                        <span class="badge bg-secondary">1 - Basing</span>
+                                    {% elif metrics.stage == 2 %}
+                                        <span class="badge bg-success">2 - Advancing</span>
+                                    {% elif metrics.stage == 3 %}
+                                        <span class="badge bg-warning">3 - Topping</span>
+                                    {% elif metrics.stage == 4 %}
+                                        <span class="badge bg-danger">4 - Declining</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Relative Strength:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.relative_strength >= 80 %}
+                                        <span class="badge bg-success">{{ metrics.relative_strength|floatformat:0 }}</span>
+                                    {% elif metrics.relative_strength >= 70 %}
+                                        <span class="badge bg-info">{{ metrics.relative_strength|floatformat:0 }}</span>
+                                    {% elif metrics.relative_strength >= 60 %}
+                                        <span class="badge bg-warning">{{ metrics.relative_strength|floatformat:0 }}</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ metrics.relative_strength|floatformat:0 }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Minervini Criteria:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.passes_minervini %}
+                                        <span class="badge bg-success">✓ PASSED ({{ metrics.criteria_passed }}/9)</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">{{ metrics.criteria_passed }}/9</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- VCP Card -->
+                <div class="card mb-3">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">📊 VCP Analysis</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>VCP Detected:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.vcp_detected %}
+                                        <span class="badge bg-success">✓ YES</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Not Detected</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if metrics.vcp_score %}
+                            <tr>
+                                <td><strong>VCP Score:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.vcp_score >= 70 %}
+                                        <span class="badge bg-success">{{ metrics.vcp_score|floatformat:0 }}</span>
+                                    {% elif metrics.vcp_score >= 60 %}
+                                        <span class="badge bg-info">{{ metrics.vcp_score|floatformat:0 }}</span>
+                                    {% elif metrics.vcp_score >= 50 %}
+                                        <span class="badge bg-warning">{{ metrics.vcp_score|floatformat:0 }}</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ metrics.vcp_score|floatformat:0 }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Contractions:</strong></td>
+                                <td class="text-end">{{ metrics.contraction_count }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Latest Tightness:</strong></td>
+                                <td class="text-end">{{ metrics.latest_contraction_pct|floatformat:1 }}%</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Volume Dry Up:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.volume_contraction %}
+                                        <span class="text-success">✓ Yes</span>
+                                    {% else %}
+                                        <span class="text-muted">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if metrics.pivot_price %}
+                            <tr>
+                                <td><strong>Pivot Price:</strong></td>
+                                <td class="text-end"><strong>${{ metrics.pivot_price|floatformat:2 }}</strong></td>
+                            </tr>
+                            {% endif %}
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Moving Averages Card -->
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <h5 class="mb-0">📈 Moving Averages</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>50-day MA:</strong></td>
+                                <td class="text-end">${{ metrics.ma_50|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>150-day MA:</strong></td>
+                                <td class="text-end">${{ metrics.ma_150|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>200-day MA:</strong></td>
+                                <td class="text-end">${{ metrics.ma_200|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>200-day Trend:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.ma_200_trend_20d > 0 %}
+                                        <span class="text-success">+{{ metrics.ma_200_trend_20d|floatformat:2 }}%</span>
+                                    {% elif metrics.ma_200_trend_20d < 0 %}
+                                        <span class="text-danger">{{ metrics.ma_200_trend_20d|floatformat:2 }}%</span>
+                                    {% else %}
+                                        {{ metrics.ma_200_trend_20d|floatformat:2 }}%
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>52-Week High:</strong></td>
+                                <td class="text-end">${{ metrics.week_52_high|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>52-Week Low:</strong></td>
+                                <td class="text-end">${{ metrics.week_52_low|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>% from 52w High:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.percent_from_52w_high >= -10 %}
+                                        <span class="text-success">{{ metrics.percent_from_52w_high|floatformat:1 }}%</span>
+                                    {% elif metrics.percent_from_52w_high >= -25 %}
+                                        <span class="text-warning">{{ metrics.percent_from_52w_high|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.percent_from_52w_high|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Analysis Widget -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">🤖 AI Analysis</h5>
+                        <div class="d-flex align-items-center" style="gap: 0.5rem;">
+                            <select id="modelSelect" class="form-select form-select-sm" style="width: auto; min-width: 200px;">
+                                <option value="claude-sonnet-4-20250514" selected>Sonnet 4.5 (Recommended)</option>
+                                <option value="claude-opus-4-20250514">Opus 4.5 (Most Capable)</option>
+                                <option value="claude-haiku-4-20250514">Haiku 4.5 (Fastest)</option>
+                            </select>
+                            <button id="analyzeBtn" class="btn btn-light btn-sm">
+                                <span id="analyzeText">Generate Analysis</span>
+                                <span id="analyzeSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="aiAnalysisResult" class="{% if not latest_analysis %}d-none{% endif %}">
+                            <div id="analysisContent" class="alert alert-info" style="white-space: pre-wrap;">{% if latest_analysis %}{{ latest_analysis.analysis_text }}{% endif %}</div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <span id="cacheStatus">{% if latest_analysis %}<span class="badge bg-secondary">Cached</span> ({% if latest_analysis.age_hours < 1 %}less than 1 hour ago{% else %}{{ latest_analysis.age_hours|floatformat:0 }} hours ago{% endif %}) | {% endif %}</span>
+                                    Analysis generated: <span id="analysisDate">{% if latest_analysis %}{{ latest_analysis.generated_at|date:"M d, Y g:i A" }}{% endif %}</span> 
+                                    | Model: <span id="analysisModel">{% if latest_analysis %}{{ analysis_model_name }}{% endif %}</span>
+                                </small>
+                                <button id="regenerateBtn" class="btn btn-sm btn-outline-primary">
+                                    Regenerate Analysis
+                                </button>
+                            </div>
+                        </div>
+                        <div id="aiAnalysisPlaceholder" class="text-center text-muted py-4 {% if latest_analysis %}d-none{% endif %}">
+                            <p>Click "Generate Analysis" to get AI-powered insights for {{ symbol }} using Claude.</p>
+                            <small>Analysis includes: Minervini metrics, VCP patterns, recent news, earnings reports, market sentiment, and actionable recommendations.</small>
+                        </div>
+                        <div id="aiAnalysisError" class="alert alert-danger d-none"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Minervini Criteria Breakdown -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">✓ Minervini Trend Template Criteria</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h6>Price Position</h6>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        Price > 50-day MA
+                                        {% if metrics.close_price > metrics.ma_50 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        Price > 150-day MA
+                                        {% if metrics.close_price > metrics.ma_150 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        Price > 200-day MA
+                                        {% if metrics.close_price > metrics.ma_200 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                </ul>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>MA Alignment</h6>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        50-day MA > 150-day MA
+                                        {% if metrics.ma_50 > metrics.ma_150 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        50-day MA > 200-day MA
+                                        {% if metrics.ma_50 > metrics.ma_200 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        150-day MA > 200-day MA
+                                        {% if metrics.ma_150 > metrics.ma_200 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                </ul>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>Momentum & Strength</h6>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        200-day MA Trending Up
+                                        {% if metrics.ma_200_trend_20d > 0 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        Within 25% of 52w High
+                                        {% if metrics.percent_from_52w_high >= -25 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        Relative Strength ≥ 70
+                                        {% if metrics.relative_strength >= 70 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 p-3 {% if metrics.passes_minervini %}bg-success{% else %}bg-light{% endif %} text-{% if metrics.passes_minervini %}white{% else %}dark{% endif %} text-center rounded">
+                            {% if metrics.passes_minervini %}
+                                <h4 class="mb-0">✓ PASSES ALL CRITERIA</h4>
+                            {% else %}
+                                <h5 class="mb-0">{{ metrics.criteria_passed }}/9 Criteria Passed</h5>
+                                {% if metrics.criteria_failed %}
+                                    <small class="text-muted">Failed: {{ metrics.criteria_failed }}</small>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Historical Data -->
+        {% if history %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">📅 Historical Metrics (Last 60 Days)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Price</th>
+                                        <th>MA50</th>
+                                        <th>MA150</th>
+                                        <th>MA200</th>
+                                        <th>RS</th>
+                                        <th>Stage</th>
+                                        <th>VCP</th>
+                                        <th>Pass</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for day in history %}
+                                    <tr>
+                                        <td>{{ day.date|date:"m/d/Y" }}</td>
+                                        <td>${{ day.close_price|floatformat:2 }}</td>
+                                        <td>${{ day.ma_50|floatformat:2 }}</td>
+                                        <td>${{ day.ma_150|floatformat:2 }}</td>
+                                        <td>${{ day.ma_200|floatformat:2 }}</td>
+                                        <td>{{ day.relative_strength|floatformat:0 }}</td>
+                                        <td>
+                                            {% if day.stage == 2 %}
+                                                <span class="badge bg-success">{{ day.stage }}</span>
+                                            {% else %}
+                                                {{ day.stage }}
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if day.vcp_detected %}
+                                                {{ day.vcp_score|floatformat:0 }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if day.passes_minervini %}
+                                                <span class="text-success">✓</span>
+                                            {% else %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    {% else %}
+        <div class="alert alert-warning">
+            <h4>No Data Found</h4>
+            <p>No analysis data available for {{ symbol }}.</p>
+            <a href="{% url 'stocks:stock_list' %}" class="btn btn-primary">← Back to Stock List</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<!-- Chart.js Zoom Plugin -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+
+<script>
+// Stock Price Chart with Zoom/Pan and Date Filtering
+document.addEventListener('DOMContentLoaded', function() {
+    const chartData = {{ chart_data|safe }};
+    
+    if (chartData && chartData.dates && chartData.dates.length > 0) {
+        // Store original data
+        const originalData = {
+            dates: [...chartData.dates],
+            prices: [...chartData.prices],
+            highs: [...chartData.highs],
+            lows: [...chartData.lows],
+            volumes: [...chartData.volumes]
+        };
+        
+        // Initialize date inputs with full range
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        startDateInput.value = chartData.dates[0];
+        endDateInput.value = chartData.dates[chartData.dates.length - 1];
+        
+        const ctx = document.getElementById('stockChart').getContext('2d');
+        
+        const stockChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartData.dates,
+                datasets: [
+                    {
+                        label: 'Price',
+                        data: chartData.prices,
+                        borderColor: 'rgb(13, 110, 253)',
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: 'High',
+                        data: chartData.highs,
+                        borderColor: 'rgba(40, 167, 69, 0.3)',
+                        borderWidth: 1,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: 'Low',
+                        data: chartData.lows,
+                        borderColor: 'rgba(220, 53, 69, 0.3)',
+                        borderWidth: 1,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0,
+                        yAxisID: 'y',
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += '$' + context.parsed.y.toFixed(2);
+                                }
+                                return label;
+                            }
+                        }
+                    },
+                    zoom: {
+                        pan: {
+                            enabled: true,
+                            mode: 'x',
+                            modifierKey: null,
+                        },
+                        zoom: {
+                            wheel: {
+                                enabled: true,
+                                speed: 0.1,
+                            },
+                            pinch: {
+                                enabled: true
+                            },
+                            mode: 'x',
+                        },
+                        limits: {
+                            x: {
+                                min: 'original',
+                                max: 'original'
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        },
+                        ticks: {
+                            maxTicksLimit: 12,
+                            maxRotation: 45,
+                            minRotation: 45
+                        }
+                    },
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Price ($)'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Reset Zoom button
+        document.getElementById('resetZoom').addEventListener('click', function() {
+            stockChart.resetZoom();
+        });
+        
+        // Apply Date Filter button
+        document.getElementById('applyDateFilter').addEventListener('click', function() {
+            const startDate = startDateInput.value;
+            const endDate = endDateInput.value;
+            
+            if (!startDate || !endDate) {
+                alert('Please select both start and end dates');
+                return;
+            }
+            
+            // Filter data by date range
+            const filteredIndices = [];
+            const filteredDates = [];
+            const filteredPrices = [];
+            const filteredHighs = [];
+            const filteredLows = [];
+            
+            originalData.dates.forEach((date, index) => {
+                if (date >= startDate && date <= endDate) {
+                    filteredIndices.push(index);
+                    filteredDates.push(date);
+                    filteredPrices.push(originalData.prices[index]);
+                    filteredHighs.push(originalData.highs[index]);
+                    filteredLows.push(originalData.lows[index]);
+                }
+            });
+            
+            if (filteredDates.length === 0) {
+                alert('No data found in the selected date range');
+                return;
+            }
+            
+            // Update chart data
+            stockChart.data.labels = filteredDates;
+            stockChart.data.datasets[0].data = filteredPrices;
+            stockChart.data.datasets[1].data = filteredHighs;
+            stockChart.data.datasets[2].data = filteredLows;
+            stockChart.resetZoom();
+            stockChart.update();
+        });
+        
+        // Reset Date Filter button
+        document.getElementById('resetDateFilter').addEventListener('click', function() {
+            // Restore original data
+            stockChart.data.labels = originalData.dates;
+            stockChart.data.datasets[0].data = originalData.prices;
+            stockChart.data.datasets[1].data = originalData.highs;
+            stockChart.data.datasets[2].data = originalData.lows;
+            
+            // Reset date inputs
+            startDateInput.value = originalData.dates[0];
+            endDateInput.value = originalData.dates[originalData.dates.length - 1];
+            
+            stockChart.resetZoom();
+            stockChart.update();
+        });
+    }
+});
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const analyzeText = document.getElementById('analyzeText');
+    const analyzeSpinner = document.getElementById('analyzeSpinner');
+    const resultDiv = document.getElementById('aiAnalysisResult');
+    const placeholderDiv = document.getElementById('aiAnalysisPlaceholder');
+    const errorDiv = document.getElementById('aiAnalysisError');
+    const contentDiv = document.getElementById('analysisContent');
+    const dateSpan = document.getElementById('analysisDate');
+    const cacheStatus = document.getElementById('cacheStatus');
+    const regenerateBtn = document.getElementById('regenerateBtn');
+    
+    async function performAnalysis(forceRegenerate = false) {
+        // Disable button and show spinner
+        analyzeBtn.disabled = true;
+        analyzeText.textContent = forceRegenerate ? 'Regenerating...' : 'Analyzing...';
+        analyzeSpinner.classList.remove('d-none');
+        
+        // Hide previous results/errors
+        resultDiv.classList.add('d-none');
+        errorDiv.classList.add('d-none');
+        placeholderDiv.classList.add('d-none');
+        
+        try {
+            // Get CSRF token and selected model
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || 
+                             getCookie('csrftoken');
+            const selectedModel = document.getElementById('modelSelect').value;
+            
+            const response = await fetch('{% url "stocks:analyze_stock_ai" symbol=symbol %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ 
+                    model: selectedModel,
+                    force_regenerate: forceRegenerate
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Show analysis result
+                contentDiv.textContent = data.analysis;
+                
+                // Format date
+                const genDate = new Date(data.generated_at);
+                dateSpan.textContent = genDate.toLocaleString();
+                
+                // Show model
+                document.getElementById('analysisModel').textContent = data.model || 'Claude';
+                
+                // Show cache status
+                if (data.from_cache) {
+                    const ageText = data.age_hours < 1 
+                        ? 'less than 1 hour ago' 
+                        : `${Math.round(data.age_hours)} hours ago`;
+                    cacheStatus.innerHTML = `<span class="badge bg-secondary">Cached</span> (${ageText}) | `;
+                } else {
+                    cacheStatus.innerHTML = '<span class="badge bg-success">Fresh</span> | ';
+                }
+                
+                resultDiv.classList.remove('d-none');
+            } else {
+                // Show error
+                errorDiv.textContent = data.error || 'Unknown error occurred';
+                errorDiv.classList.remove('d-none');
+                placeholderDiv.classList.remove('d-none');
+            }
+        } catch (error) {
+            errorDiv.textContent = 'Error: ' + error.message;
+            errorDiv.classList.remove('d-none');
+            placeholderDiv.classList.remove('d-none');
+        } finally {
+            // Re-enable button
+            analyzeBtn.disabled = false;
+            analyzeText.textContent = 'Generate Analysis';
+            analyzeSpinner.classList.add('d-none');
+        }
+    }
+    
+    // Generate Analysis button
+    analyzeBtn.addEventListener('click', () => performAnalysis(false));
+    
+    // Regenerate button
+    regenerateBtn.addEventListener('click', () => performAnalysis(true));
+    
+    // Helper function to get CSRF token from cookies
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+    
+    // Watchlist functionality
+    const watchlistBtn = document.getElementById('watchlistBtn');
+    const watchlistIcon = document.getElementById('watchlistIcon');
+    const symbol = '{{ symbol }}';
+    
+    // Check initial watchlist status
+    async function checkWatchlistStatus() {
+        try {
+            const response = await fetch(`/api/watchlist/check/${symbol}/`);
+            const data = await response.json();
+            
+            if (data.in_watchlist) {
+                watchlistIcon.textContent = '★';
+                watchlistBtn.classList.remove('btn-outline-warning');
+                watchlistBtn.classList.add('btn-warning');
+                watchlistBtn.title = 'Remove from Watchlist';
+            }
+        } catch (error) {
+            console.error('Error checking watchlist status:', error);
+        }
+    }
+    
+    // Toggle watchlist
+    watchlistBtn.addEventListener('click', async function() {
+        const isInWatchlist = watchlistIcon.textContent === '★';
+        const csrfToken = getCookie('csrftoken');
+        
+        try {
+            const url = isInWatchlist 
+                ? `/api/watchlist/remove/${symbol}/` 
+                : `/api/watchlist/add/${symbol}/`;
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrfToken
+                }
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                if (isInWatchlist) {
+                    watchlistIcon.textContent = '☆';
+                    watchlistBtn.classList.remove('btn-warning');
+                    watchlistBtn.classList.add('btn-outline-warning');
+                    watchlistBtn.title = 'Add to Watchlist';
+                } else {
+                    watchlistIcon.textContent = '★';
+                    watchlistBtn.classList.remove('btn-outline-warning');
+                    watchlistBtn.classList.add('btn-warning');
+                    watchlistBtn.title = 'Remove from Watchlist';
+                }
+            }
+        } catch (error) {
+            console.error('Error toggling watchlist:', error);
+            alert('Error updating watchlist');
+        }
+    });
+    
+    // Check status on page load
+    checkWatchlistStatus();
+});
+</script>
+{% endblock %}

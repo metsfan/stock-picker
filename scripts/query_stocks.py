@@ -219,6 +219,56 @@ def show_stocks_by_stage(conn, stage, date=None, limit=50):
     print(f"\nTotal: {len(results)} stocks")
 
 
+def show_vcp_stocks(conn, date=None, limit=50, min_score=50):
+    """Show stocks with VCP (Volatility Contraction Pattern) detected."""
+    if date is None:
+        date = get_latest_date(conn)
+    
+    if not date:
+        print("No data available in database.")
+        return
+    
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT symbol, close_price, relative_strength, stage,
+               vcp_score, contraction_count, latest_contraction_pct, 
+               volume_contraction, pivot_price, passes_minervini
+        FROM minervini_metrics
+        WHERE date = %s AND vcp_detected = true AND vcp_score >= %s
+        ORDER BY vcp_score DESC, relative_strength DESC
+        LIMIT %s
+    """, (date, min_score, limit))
+    
+    results = cursor.fetchall()
+    
+    print(f"\n{'='*110}")
+    print(f"VCP (VOLATILITY CONTRACTION PATTERN) STOCKS - {date}")
+    print(f"{'='*110}\n")
+    
+    if not results:
+        print(f"No stocks with VCP detected (min score: {min_score}).")
+        return
+    
+    print(f"{'Symbol':<8} {'Price':<10} {'RS':<6} {'Stage':<6} {'VCP':<6} "
+          f"{'Cont':<5} {'Tight%':<8} {'VolDry':<7} {'Pivot':<10} {'Pass':<5}")
+    print("-" * 110)
+    
+    for stock in results:
+        symbol, price, rs, stage, vcp_score, cont_count, tight_pct, vol_dry, pivot, passes = stock
+        vol_str = "Yes" if vol_dry else "No"
+        pass_str = "✓" if passes else "-"
+        tight_str = f"{tight_pct:.1f}%" if tight_pct else "-"
+        print(f"{symbol:<8} ${price:<9.2f} {rs or 0:<5.0f} {stage:<6} {vcp_score:<5.0f} "
+              f"{cont_count:<5} {tight_str:<8} {vol_str:<7} ${pivot:<9.2f} {pass_str:<5}")
+    
+    print(f"\nTotal: {len(results)} stocks with VCP pattern")
+    print("\nLegend:")
+    print("  Cont = Number of contractions")
+    print("  Tight% = Latest contraction tightness (lower = better)")
+    print("  VolDry = Volume dried up during consolidation")
+    print("  Pivot = Potential breakout price")
+
+
 def main():
     """Main menu."""
     if len(sys.argv) < 2:
@@ -227,6 +277,7 @@ def main():
         print("\nUsage:")
         print("  python query_stocks.py passing [limit]     - Show stocks passing Minervini")
         print("  python query_stocks.py stage STAGE [limit] - Show stocks in stage (1-4)")
+        print("  python query_stocks.py vcp [limit] [min_score] - Show VCP pattern stocks")
         print("  python query_stocks.py stock SYMBOL [days] - Show history for a stock")
         print("  python query_stocks.py stats               - Show statistics")
         print("\nStages:")
@@ -234,9 +285,13 @@ def main():
         print("  2 = Advancing/Markup (ideal buy zone)")
         print("  3 = Topping/Distribution")
         print("  4 = Declining/Markdown")
+        print("\nVCP (Volatility Contraction Pattern):")
+        print("  Stocks consolidating with tightening price ranges")
+        print("  Higher score = better setup for potential breakout")
         print("\nExamples:")
         print("  python query_stocks.py passing 20")
         print("  python query_stocks.py stage 2 50")
+        print("  python query_stocks.py vcp 30 60              # Top 30 VCPs with score >= 60")
         print("  python query_stocks.py stock AAPL 60")
         print("  python query_stocks.py stats")
         sys.exit(0)
@@ -268,12 +323,17 @@ def main():
             days = int(sys.argv[3]) if len(sys.argv) > 3 else 30
             show_stock_history(conn, symbol, days)
         
+        elif command == "vcp":
+            limit = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+            min_score = int(sys.argv[3]) if len(sys.argv) > 3 else 50
+            show_vcp_stocks(conn, limit=limit, min_score=min_score)
+        
         elif command == "stats":
             show_statistics(conn)
         
         else:
             print(f"Unknown command: {command}")
-            print("Use: passing, stage, stock, or stats")
+            print("Use: passing, stage, vcp, stock, or stats")
             sys.exit(1)
     
     finally:

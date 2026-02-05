@@ -1,0 +1,190 @@
+{% extends 'stocks/base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}Dashboard - Stock Picker{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">📊 Stock Market Dashboard</h1>
+    
+    {% if latest_date %}
+        <div class="alert alert-info">
+            <strong>Latest Data:</strong> {{ latest_date|date:"F d, Y" }}
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Total Stocks</h5>
+                        <h2 class="card-text">{{ stats.total_stocks }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card border-success">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Passing Minervini</h5>
+                        <h2 class="card-text text-success">{{ stats.passing_minervini }}</h2>
+                        <small class="text-muted">{{ stats.passing_minervini|floatformat:0|add:".0"|floatformat:"-2" }}% of total</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card border-info">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">VCP Detected</h5>
+                        <h2 class="card-text text-info">{{ stats.vcp_detected }}</h2>
+                        <small class="text-muted">Volatility Contraction Patterns</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card border-warning">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Stage 2 Stocks</h5>
+                        <h2 class="card-text text-warning">{{ stats.stage_2 }}</h2>
+                        <small class="text-muted">Advancing/Markup</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="text-muted">Stage 1 (Basing)</h6>
+                        <h4>{{ stats.stage_1 }}</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h6>Stage 2 (Advancing)</h6>
+                        <h4>{{ stats.stage_2 }}</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning">
+                    <div class="card-body">
+                        <h6>Stage 3 (Topping)</h6>
+                        <h4>{{ stats.stage_3 }}</h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-danger text-white">
+                    <div class="card-body">
+                        <h6>Stage 4 (Declining)</h6>
+                        <h4>{{ stats.stage_4 }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">🏆 Top Relative Strength</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>RS</th>
+                                    <th>Stage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in top_rs %}
+                                <tr>
+                                    <td><strong>{{ stock.symbol }}</strong></td>
+                                    <td><span class="badge bg-success">{{ stock.relative_strength|floatformat:0 }}</span></td>
+                                    <td>{{ stock.stage }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">📊 Top VCP Scores</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>VCP</th>
+                                    <th>Pivot</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in top_vcp %}
+                                <tr>
+                                    <td><strong>{{ stock.symbol }}</strong></td>
+                                    <td><span class="badge bg-info">{{ stock.vcp_score|floatformat:0 }}</span></td>
+                                    <td>${{ stock.pivot_price|floatformat:2 }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">⭐ Best Setups (Stage 2 + VCP)</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>RS</th>
+                                    <th>VCP</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in best_setups %}
+                                <tr>
+                                    <td><strong>{{ stock.symbol }}</strong></td>
+                                    <td><span class="badge bg-success">{{ stock.relative_strength|floatformat:0 }}</span></td>
+                                    <td><span class="badge bg-info">{{ stock.vcp_score|floatformat:0 }}</span></td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No setups found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <a href="{% url 'stocks:stock_list' %}" class="btn btn-primary btn-lg">View All Stocks →</a>
+        </div>
+
+    {% else %}
+        <div class="alert alert-warning">
+            <h4>No Data Available</h4>
+            <p>Run the analysis scripts to populate the database:</p>
+            <code>python scripts/download_stock_data.py && python scripts/minervini.py</code>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,1 +1,6 @@
 psycopg2-binary>=2.9.9
+Django>=4.2.0
+django-tables2>=2.7.0
+django-bootstrap5>=23.3
+tablib>=3.5.0
+anthropic>=0.39.0
