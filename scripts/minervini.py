@@ -58,7 +58,7 @@ This script processes daily stock data and stores metrics in PostgreSQL for tren
 """
 
 import psycopg2
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from pathlib import Path
 import sys
 
@@ -1009,7 +1009,7 @@ class MinerviniAnalyzer:
             'mostly_beats': mostly_beats
         }
     
-    def check_upcoming_earnings(self, symbol, date, days_ahead=14):
+    def check_upcoming_earnings(self, symbol, analysis_date, days_ahead=14):
         """
         Check if earnings announcement is coming soon.
         
@@ -1017,7 +1017,7 @@ class MinerviniAnalyzer:
         
         Args:
             symbol: Stock symbol
-            date: Current date
+            analysis_date: Current date (YYYY-MM-DD string)
             days_ahead: Days to look ahead (default 14)
             
         Returns:
@@ -1025,7 +1025,7 @@ class MinerviniAnalyzer:
         """
         cursor = self.conn.cursor()
         
-        end_date_obj = datetime.strptime(date, "%Y-%m-%d")
+        end_date_obj = datetime.strptime(analysis_date, "%Y-%m-%d")
         future_date = (end_date_obj + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
         
         cursor.execute("""
@@ -1041,14 +1041,14 @@ class MinerviniAnalyzer:
             AND date <= %s
             ORDER BY date ASC
             LIMIT 1
-        """, (symbol, date, future_date))
+        """, (symbol, analysis_date, future_date))
         
         result = cursor.fetchone()
         cursor.close()
         
         if result:
             earnings_date = result[0]
-            days_until = (earnings_date - end_date_obj.date()).days if isinstance(earnings_date, datetime.date) else None
+            days_until = (earnings_date - end_date_obj.date()).days if isinstance(earnings_date, date) else None
             
             return {
                 'has_upcoming_earnings': True,

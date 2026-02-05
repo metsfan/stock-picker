@@ -18,8 +18,13 @@ import requests
 import psycopg2
 from datetime import datetime, timedelta
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import sys
+
+# Concurrency configuration
+BATCH_SIZE = 10  # Number of concurrent requests
+BATCH_DELAY_MS = 100  # Delay between batches in milliseconds
 
 def _load_api_key():
     """Load Massive API key from ~/.massive-api/api_key.txt"""
@@ -259,6 +264,107 @@ def upsert_earnings_record(conn, record):
         return False
 
 
+def process_ticker_earnings(ticker_data, conn, default_start_date, end_date):
+    """
+    Process earnings for a single ticker (for concurrent execution).
+    
+    Args:
+        ticker_data: Tuple of (ticker, latest_date)
+        conn: Database connection
+        default_start_date: Default start date for fetching
+        end_date: End date for fetching
+        
+    Returns:
+        dict: Results with ticker, success, saved_count
+    """
+    ticker, latest_date = ticker_data
+    
+    try:
+        # Determine start date for this ticker
+        if latest_date:
+            # Add 1 day to avoid re-fetching the same date
+            start_date = (latest_date + timedelta(days=1)).strftime("%Y-%m-%d")
+        else:
+            # No existing data, use default start date
+            start_date = default_start_date
+        
+        # Fetch earnings for this ticker
+        earnings = fetch_earnings_for_ticker(ticker, start_date, end_date)
+        
+        if earnings:
+            # Save each earnings record
+            saved_count = 0
+            for record in earnings:
+                if upsert_earnings_record(conn, record):
+                    saved_count += 1
+            
+            return {
+                'ticker': ticker,
+                'success': True,
+                'saved_count': saved_count
+            }
+        else:
+            return {
+                'ticker': ticker,
+                'success': False,
+                'saved_count': 0
+            }
+            
+    except Exception as e:
+        return {
+            'ticker': ticker,
+            'success': False,
+            'error': str(e)[:100],
+            'saved_count': 0
+        }
+
+
+def process_batch(conn, tickers_batch, default_start_date, end_date):
+    """
+    Process a batch of tickers concurrently.
+    
+    Args:
+        conn: Database connection
+        tickers_batch: List of (ticker, latest_date) tuples
+        default_start_date: Default start date for fetching
+        end_date: End date for fetching
+        
+    Returns:
+        dict: Statistics of the batch processing
+    """
+    stats = {'with_data': 0, 'without_data': 0, 'total_records': 0, 'errors': 0}
+    
+    with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+        # Submit all tasks
+        futures = {
+            executor.submit(
+                process_ticker_earnings, 
+                ticker_data, 
+                conn, 
+                default_start_date, 
+                end_date
+            ): ticker_data[0]
+            for ticker_data in tickers_batch
+        }
+        
+        # Process results as they complete
+        for future in as_completed(futures):
+            result = future.result()
+            
+            if result['success']:
+                stats['with_data'] += 1
+                stats['total_records'] += result['saved_count']
+                print(f"  ✓ {result['ticker']}: {result['saved_count']} earnings records")
+            else:
+                if 'error' in result:
+                    stats['errors'] += 1
+                    print(f"  ✗ {result['ticker']}: {result['error']}")
+                else:
+                    stats['without_data'] += 1
+    
+    return stats
+
+
 def main():
     """Main function to fetch and store earnings data."""
     print("=" * 80)
@@ -300,7 +406,7 @@ def main():
     
     print(f"\n4. Fetching earnings data (default since {default_start_date})...")
     print(f"   For tickers with existing data, only fetching new records")
-    print(f"   This will take a while - fetching {len(tickers_to_fetch)} tickers")
+    print(f"   Fetching {len(tickers_to_fetch)} tickers with {BATCH_SIZE} concurrent requests")
     print("-" * 80)
     
     total_earnings = 0
@@ -308,48 +414,43 @@ def main():
     tickers_without_data = 0
     errors = 0
     
-    for i, (ticker, latest_date) in enumerate(tickers_to_fetch, 1):
+    # Process tickers in batches of BATCH_SIZE
+    num_batches = (len(tickers_to_fetch) + BATCH_SIZE - 1) // BATCH_SIZE
+    
+    for batch_num in range(num_batches):
+        start_idx = batch_num * BATCH_SIZE
+        end_idx = min(start_idx + BATCH_SIZE, len(tickers_to_fetch))
+        batch = tickers_to_fetch[start_idx:end_idx]
+        
         try:
-            # Determine start date for this ticker
-            if latest_date:
-                # Add 1 day to avoid re-fetching the same date
-                start_date = (latest_date + timedelta(days=1)).strftime("%Y-%m-%d")
-            else:
-                # No existing data, use default start date
-                start_date = default_start_date
+            print(f"\n  Batch {batch_num + 1}/{num_batches} ({len(batch)} tickers)...")
             
-            # Fetch earnings for this ticker
-            earnings = fetch_earnings_for_ticker(ticker, start_date, end_date)
+            # Process batch concurrently
+            batch_stats = process_batch(conn, batch, default_start_date, end_date)
             
-            if earnings:
-                # Save each earnings record
-                saved_count = 0
-                for record in earnings:
-                    if upsert_earnings_record(conn, record):
-                        saved_count += 1
-                
-                total_earnings += saved_count
-                tickers_with_data += 1
-                
-                print(f"  [{i}/{len(tickers_to_fetch)}] ✓ {ticker}: {saved_count} earnings records")
-            else:
-                tickers_without_data += 1
-                if i % 50 == 0:  # Only print every 50th ticker without data to reduce noise
-                    print(f"  [{i}/{len(tickers_to_fetch)}] - {ticker}: No earnings data")
+            # Update totals
+            tickers_with_data += batch_stats['with_data']
+            tickers_without_data += batch_stats['without_data']
+            total_earnings += batch_stats['total_records']
+            errors += batch_stats['errors']
             
-            # Rate limiting: Small delay between requests
-            if i % 100 == 0:
-                print(f"\n  Progress checkpoint: {i}/{len(tickers_to_fetch)} tickers processed")
-                print(f"  Total earnings: {total_earnings} | With data: {tickers_with_data} | Without: {tickers_without_data}\n")
-                time.sleep(1)  # Brief pause every 100 tickers
+            # Progress checkpoint every 10 batches
+            if (batch_num + 1) % 10 == 0:
+                processed = end_idx
+                print(f"\n  Progress checkpoint: {processed}/{len(tickers_to_fetch)} tickers processed")
+                print(f"  Total earnings: {total_earnings} | With data: {tickers_with_data} | Without: {tickers_without_data}")
+            
+            # Small delay between batches to avoid overwhelming the API
+            if batch_num < num_batches - 1:
+                time.sleep(BATCH_DELAY_MS / 1000)
             
         except KeyboardInterrupt:
-            print(f"\n\nInterrupted by user at ticker {i}/{len(tickers_to_fetch)}")
-            print(f"Progress saved up to: {ticker}")
+            print(f"\n\nInterrupted by user at batch {batch_num + 1}/{num_batches}")
+            print(f"Progress saved up to batch {batch_num}")
             break
         except Exception as e:
-            print(f"  [{i}/{len(tickers_to_fetch)}] ✗ {ticker}: Unexpected error - {str(e)[:100]}")
-            errors += 1
+            print(f"  Batch {batch_num + 1} error: {str(e)[:100]}")
+            errors += len(batch)
             continue
     
     # Close database connection

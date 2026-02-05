@@ -5,3 +5,4 @@ django-bootstrap5>=23.3
 tablib>=3.5.0
 anthropic>=0.39.0
 requests>=2.31.0
+gunicorn>=21.0.0

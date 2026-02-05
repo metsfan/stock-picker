@@ -14,9 +14,16 @@ Run this frequently (daily) to stay updated on:
 
 import requests
 import psycopg2
+from psycopg2 import pool
 from datetime import datetime, timedelta
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import sys
+import time
+
+# Concurrency configuration
+BATCH_SIZE = 10  # Number of concurrent requests/saves
+BATCH_DELAY_MS = 100  # Delay between batches in milliseconds
 
 def _load_api_key():
     """Load Massive API key from ~/.massive-api/api_key.txt"""
@@ -48,6 +55,23 @@ def get_db_connection():
         return conn
     except psycopg2.Error as e:
         print(f"Error: Could not connect to PostgreSQL: {e}")
+        sys.exit(1)
+
+
+def get_db_connection_pool(min_conn=1, max_conn=BATCH_SIZE):
+    """Get PostgreSQL connection pool for concurrent operations."""
+    try:
+        return pool.ThreadedConnectionPool(
+            min_conn,
+            max_conn,
+            host='localhost',
+            port=5432,
+            database='stocks',
+            user='postgres',
+            password='adamesk'
+        )
+    except psycopg2.Error as e:
+        print(f"Error: Could not create connection pool: {e}")
         sys.exit(1)
 
 
@@ -186,15 +210,73 @@ def upsert_earnings_record(conn, record):
         return False
 
 
+def upsert_record_with_pool(db_pool, record):
+    """Insert or update an earnings record using connection pool."""
+    conn = None
+    try:
+        conn = db_pool.getconn()
+        result = upsert_earnings_record(conn, record)
+        return result
+    except Exception as e:
+        print(f"Error with pooled connection: {e}")
+        return False
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+
+def save_records_concurrently(db_pool, records):
+    """
+    Save multiple earnings records concurrently.
+    
+    Args:
+        db_pool: Database connection pool
+        records: List of earnings records
+        
+    Returns:
+        int: Number of successfully saved records
+    """
+    saved = 0
+    
+    # Process records in batches
+    num_batches = (len(records) + BATCH_SIZE - 1) // BATCH_SIZE
+    
+    for batch_num in range(num_batches):
+        start_idx = batch_num * BATCH_SIZE
+        end_idx = min(start_idx + BATCH_SIZE, len(records))
+        batch = records[start_idx:end_idx]
+        
+        with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
+            futures = {
+                executor.submit(upsert_record_with_pool, db_pool, record): record
+                for record in batch
+            }
+            
+            for future in as_completed(futures):
+                if future.result():
+                    saved += 1
+        
+        # Small delay between batches
+        if batch_num < num_batches - 1:
+            time.sleep(BATCH_DELAY_MS / 1000)
+    
+    return saved
+
+
 def main():
     """Main function."""
     print("=" * 80)
     print("Upcoming Earnings Fetcher (Next 60 Days)")
+    print(f"Using {BATCH_SIZE} concurrent requests")
     print("=" * 80)
     
     # Connect to database
     conn = get_db_connection()
     print("✓ Database connected")
+    
+    # Create connection pool for concurrent saves
+    db_pool = get_db_connection_pool()
+    print(f"✓ Connection pool created (max {BATCH_SIZE} connections)")
     
     # Fetch upcoming earnings
     print("\nFetching upcoming earnings...")
@@ -204,16 +286,17 @@ def main():
     if not earnings:
         print("\n⚠ No upcoming earnings found")
         conn.close()
+        db_pool.closeall()
         return
     
-    # Save to database
-    print("\nSaving to database...")
-    saved = 0
-    for record in earnings:
-        if upsert_earnings_record(conn, record):
-            saved += 1
+    # Save to database concurrently
+    print(f"\nSaving to database with {BATCH_SIZE} concurrent workers...")
+    saved = save_records_concurrently(db_pool, earnings)
     
     print(f"✓ Saved {saved} earnings records")
+    
+    # Close the pool
+    db_pool.closeall()
     
     # Show upcoming earnings by date
     cursor = conn.cursor()
@@ -255,8 +338,8 @@ def main():
         print("\n" + "=" * 80)
         print("⚠️  WARNING: Stocks Passing Minervini with Earnings in Next 14 Days:")
         print("=" * 80)
-        for ticker, date, time, est_eps, status in upcoming:
-            time_str = time.strftime("%H:%M") if time else "TBD"
+        for ticker, date, earnings_time, est_eps, status in upcoming:
+            time_str = earnings_time.strftime("%H:%M") if earnings_time else "TBD"
             print(f"  {ticker}: {date} at {time_str} ({status}) - Est EPS: ${est_eps if est_eps else 'N/A'}")
         print("\n  → Consider exiting or tightening stops before earnings!")
     

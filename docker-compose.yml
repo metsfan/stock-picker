@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: stock-picker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stocks
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: adamesk
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./setup_database.sql:/docker-entrypoint-initdb.d/setup_database.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stocks"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Django Web Application
+  web:
+    build: .
+    container_name: stock-picker-web
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_DEBUG=False
+      - DJANGO_SECRET_KEY=change-me-in-production-use-strong-random-key
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=stocks
+      - DB_USER=postgres
+      - DB_PASSWORD=adamesk
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Mount for API key (optional)
+      - ~/.massive-api:/home/appuser/.massive-api:ro
+
+  # Optional: Run data fetching scripts
+  # Uncomment and use: docker-compose run --rm scripts python scripts/minervini.py
+  # scripts:
+  #   build: .
+  #   container_name: stock-picker-scripts
+  #   environment:
+  #     - DB_HOST=db
+  #     - DB_PORT=5432
+  #     - DB_NAME=stocks
+  #     - DB_USER=postgres
+  #     - DB_PASSWORD=adamesk
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ~/.massive-api:/home/appuser/.massive-api:ro
+  #   command: ["python", "scripts/minervini.py"]
+
+volumes:
+  postgres_data:
