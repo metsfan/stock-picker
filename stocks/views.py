@@ -326,8 +326,8 @@ TECHNICAL METRICS (as of {latest_date}):
 CURRENT PRICE & STAGE:
 - Price: ${metrics.close_price}
 - Stage: {metrics.stage} ({metrics.stage_name})
-- Relative Strength: {metrics.relative_strength}/100
-- Passes Minervini Criteria: {'YES' if metrics.passes_minervini else 'NO'} ({metrics.criteria_passed}/9 criteria)
+- Relative Strength (Percentile Rank): {metrics.relative_strength}/99
+- Passes Minervini 8-Point Criteria: {'YES' if metrics.passes_minervini else 'NO'} ({metrics.criteria_passed}/8 criteria + RS filter)
 
 MOVING AVERAGES:
 - 50-day MA: ${metrics.ma_50}
@@ -347,6 +347,16 @@ VCP (VOLATILITY CONTRACTION PATTERN):
 - Latest Contraction: {metrics.latest_contraction_pct}%
 - Volume Contraction: {'YES' if metrics.volume_contraction else 'NO'}
 - Pivot Price: ${metrics.pivot_price}
+
+EARNINGS FUNDAMENTALS:
+- EPS Growth YoY: {metrics.eps_growth_yoy}%
+- EPS Growth QoQ: {metrics.eps_growth_qoq}%
+- Revenue Growth YoY: {metrics.revenue_growth_yoy}%
+- Earnings Acceleration: {'YES' if metrics.earnings_acceleration else 'NO'}
+- Earnings Beat Rate: {metrics.earnings_beat_rate}%
+- Earnings Quality Score: {metrics.earnings_quality_score}/100
+- Passes Earnings Criteria: {'YES' if metrics.passes_earnings else 'NO' if metrics.passes_earnings == False else 'N/A'}
+- Upcoming Earnings: {'YES - in ' + str(metrics.days_until_earnings) + ' days' if metrics.has_upcoming_earnings else 'NO'}
 
 RECENT PRICE TREND (Last 10 days):
 """

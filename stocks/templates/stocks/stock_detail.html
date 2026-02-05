@@ -194,9 +194,9 @@
                                 <td><strong>Minervini Criteria:</strong></td>
                                 <td class="text-end">
                                     {% if metrics.passes_minervini %}
-                                        <span class="badge bg-success">✓ PASSED ({{ metrics.criteria_passed }}/9)</span>
+                                        <span class="badge bg-success">✓ PASSED ({{ metrics.criteria_passed }}/8)</span>
                                     {% else %}
-                                        <span class="badge bg-danger">{{ metrics.criteria_passed }}/9</span>
+                                        <span class="badge bg-danger">{{ metrics.criteria_passed }}/8</span>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -358,6 +358,118 @@
                     </div>
                 </div>
 
+                <!-- Earnings Fundamentals Card -->
+                {% if metrics.eps_growth_yoy or metrics.earnings_quality_score %}
+                <div class="card mb-3">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">📊 Earnings Fundamentals</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            {% if metrics.eps_growth_yoy %}
+                            <tr>
+                                <td><strong>EPS Growth (YoY):</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.eps_growth_yoy >= 25 %}
+                                        <span class="text-success fw-bold">+{{ metrics.eps_growth_yoy|floatformat:1 }}%</span>
+                                    {% elif metrics.eps_growth_yoy > 0 %}
+                                        <span class="text-info">+{{ metrics.eps_growth_yoy|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.eps_growth_yoy|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.eps_growth_qoq %}
+                            <tr>
+                                <td><strong>EPS Growth (QoQ):</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.eps_growth_qoq >= 20 %}
+                                        <span class="text-success">+{{ metrics.eps_growth_qoq|floatformat:1 }}%</span>
+                                    {% elif metrics.eps_growth_qoq > 0 %}
+                                        <span class="text-info">+{{ metrics.eps_growth_qoq|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.eps_growth_qoq|floatformat:1 }}%</span>
+                                    {% endif %}
+                                    {% if metrics.earnings_acceleration %}
+                                        <span title="Earnings Accelerating">🚀</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.revenue_growth_yoy %}
+                            <tr>
+                                <td><strong>Revenue Growth (YoY):</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.revenue_growth_yoy >= 15 %}
+                                        <span class="text-success">+{{ metrics.revenue_growth_yoy|floatformat:1 }}%</span>
+                                    {% elif metrics.revenue_growth_yoy > 0 %}
+                                        <span class="text-info">+{{ metrics.revenue_growth_yoy|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.revenue_growth_yoy|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.earnings_beat_rate %}
+                            <tr>
+                                <td><strong>Earnings Beat Rate:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.earnings_beat_rate >= 75 %}
+                                        <span class="badge bg-success">{{ metrics.earnings_beat_rate|floatformat:0 }}%</span>
+                                    {% elif metrics.earnings_beat_rate >= 50 %}
+                                        <span class="badge bg-info">{{ metrics.earnings_beat_rate|floatformat:0 }}%</span>
+                                    {% else %}
+                                        <span class="badge bg-warning">{{ metrics.earnings_beat_rate|floatformat:0 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.earnings_quality_score %}
+                            <tr>
+                                <td><strong>Quality Score:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.earnings_quality_score >= 70 %}
+                                        <span class="badge bg-success">{{ metrics.earnings_quality_score }}/100</span>
+                                    {% elif metrics.earnings_quality_score >= 50 %}
+                                        <span class="badge bg-info">{{ metrics.earnings_quality_score }}/100</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ metrics.earnings_quality_score }}/100</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td><strong>Passes Earnings:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.passes_earnings %}
+                                        <span class="badge bg-success">✓ Yes</span>
+                                    {% elif metrics.passes_earnings == False %}
+                                        <span class="badge bg-danger">✗ No</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">N/A</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% if metrics.has_upcoming_earnings %}
+                            <tr>
+                                <td><strong>Upcoming Earnings:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.days_until_earnings and metrics.days_until_earnings <= 7 %}
+                                        <span class="badge bg-warning">⚠️ {{ metrics.days_until_earnings }} days</span>
+                                    {% elif metrics.days_until_earnings %}
+                                        <span class="badge bg-info">{{ metrics.days_until_earnings }} days</span>
+                                    {% else %}
+                                        <span class="badge bg-info">Soon</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- VCP Card -->
                 <div class="card mb-3">
                     <div class="card-header bg-info text-white">
@@ -422,7 +534,7 @@
                 <!-- Moving Averages Card -->
                 <div class="card">
                     <div class="card-header bg-warning">
-                        <h5 class="mb-0">📈 Moving Averages</h5>
+                        <h5 class="mb-0">📈 Moving Averages & Range</h5>
                     </div>
                     <div class="card-body">
                         <table class="table table-sm">
@@ -437,6 +549,18 @@
                             <tr>
                                 <td><strong>200-day MA:</strong></td>
                                 <td class="text-end">${{ metrics.ma_200|floatformat:2 }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>150-day Trend:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.ma_150_trend_20d and metrics.ma_150_trend_20d > 0 %}
+                                        <span class="text-success">+{{ metrics.ma_150_trend_20d|floatformat:2 }}%</span>
+                                    {% elif metrics.ma_150_trend_20d and metrics.ma_150_trend_20d < 0 %}
+                                        <span class="text-danger">{{ metrics.ma_150_trend_20d|floatformat:2 }}%</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
                             </tr>
                             <tr>
                                 <td><strong>200-day Trend:</strong></td>
@@ -470,6 +594,18 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                            <tr>
+                                <td><strong>% from 52w Low:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.percent_from_52w_low and metrics.percent_from_52w_low >= 30 %}
+                                        <span class="text-success">+{{ metrics.percent_from_52w_low|floatformat:1 }}%</span>
+                                    {% elif metrics.percent_from_52w_low %}
+                                        <span class="text-danger">+{{ metrics.percent_from_52w_low|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
                         </table>
                     </div>
                 </div>
@@ -496,7 +632,11 @@
                     </div>
                     <div class="card-body">
                         <div id="aiAnalysisResult" class="{% if not latest_analysis %}d-none{% endif %}">
-                            <div id="analysisContent" class="alert alert-info" style="white-space: pre-wrap;">{% if latest_analysis %}{{ latest_analysis.analysis_text }}{% endif %}</div>
+                            <div id="analysisContent" class="alert alert-info markdown-content">
+                                {% if latest_analysis %}
+                                <div class="markdown-body">{{ latest_analysis.analysis_text|escape }}</div>
+                                {% endif %}
+                            </div>
                             <div class="d-flex justify-content-between align-items-center">
                                 <small class="text-muted">
                                     <span id="cacheStatus">{% if latest_analysis %}<span class="badge bg-secondary">Cached</span> ({% if latest_analysis.age_hours < 1 %}less than 1 hour ago{% else %}{{ latest_analysis.age_hours|floatformat:0 }} hours ago{% endif %}) | {% endif %}</span>
@@ -523,23 +663,16 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">✓ Minervini Trend Template Criteria</h5>
+                        <h5 class="mb-0">✓ Minervini 8-Point Trend Template</h5>
+                        <small>Reference: "Trade Like a Stock Market Wizard" by Mark Minervini</small>
                     </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-4">
-                                <h6>Price Position</h6>
+                                <h6>Price Position (Criteria 1-2)</h6>
                                 <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        Price > 50-day MA
-                                        {% if metrics.close_price > metrics.ma_50 %}
-                                            <span class="badge bg-success">✓</span>
-                                        {% else %}
-                                            <span class="badge bg-danger">✗</span>
-                                        {% endif %}
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between">
-                                        Price > 150-day MA
+                                        <span>1. Price > 150-day MA</span>
                                         {% if metrics.close_price > metrics.ma_150 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
@@ -547,7 +680,7 @@
                                         {% endif %}
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between">
-                                        Price > 200-day MA
+                                        <span>2. Price > 200-day MA</span>
                                         {% if metrics.close_price > metrics.ma_200 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
@@ -555,29 +688,19 @@
                                         {% endif %}
                                     </li>
                                 </ul>
-                            </div>
-                            <div class="col-md-4">
-                                <h6>MA Alignment</h6>
+                                <h6 class="mt-3">MA Trends (Criteria 3-4)</h6>
                                 <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        50-day MA > 150-day MA
-                                        {% if metrics.ma_50 > metrics.ma_150 %}
+                                        <span>3. 150-day MA Trending Up</span>
+                                        {% if metrics.ma_150_trend_20d and metrics.ma_150_trend_20d > 0 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
                                         {% endif %}
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between">
-                                        50-day MA > 200-day MA
-                                        {% if metrics.ma_50 > metrics.ma_200 %}
-                                            <span class="badge bg-success">✓</span>
-                                        {% else %}
-                                            <span class="badge bg-danger">✗</span>
-                                        {% endif %}
-                                    </li>
-                                    <li class="list-group-item d-flex justify-content-between">
-                                        150-day MA > 200-day MA
-                                        {% if metrics.ma_150 > metrics.ma_200 %}
+                                        <span>4. 200-day MA Trending Up</span>
+                                        {% if metrics.ma_200_trend_20d > 0 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
@@ -586,26 +709,50 @@
                                 </ul>
                             </div>
                             <div class="col-md-4">
-                                <h6>Momentum & Strength</h6>
+                                <h6>MA Alignment (Criteria 5-6)</h6>
                                 <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        200-day MA Trending Up
-                                        {% if metrics.ma_200_trend_20d > 0 %}
+                                        <span>5. 50-day MA > 150-day MA</span>
+                                        {% if metrics.ma_50 > metrics.ma_150 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
                                         {% endif %}
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between">
-                                        Within 25% of 52w High
+                                        <span>6. 50-day MA > 200-day MA</span>
+                                        {% if metrics.ma_50 > metrics.ma_200 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                </ul>
+                            </div>
+                            <div class="col-md-4">
+                                <h6>52-Week Range (Criteria 7-8)</h6>
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>7. 30%+ Above 52w Low</span>
+                                        {% if metrics.percent_from_52w_low and metrics.percent_from_52w_low >= 30 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>8. Within 25% of 52w High</span>
                                         {% if metrics.percent_from_52w_high >= -25 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
                                         {% endif %}
                                     </li>
+                                </ul>
+                                <h6 class="mt-3">RS Filter (Additional)</h6>
+                                <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        Relative Strength ≥ 70
+                                        <span>RS Rating ≥ 70</span>
                                         {% if metrics.relative_strength >= 70 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
@@ -618,9 +765,9 @@
 
                         <div class="mt-3 p-3 {% if metrics.passes_minervini %}bg-success{% else %}bg-light{% endif %} text-{% if metrics.passes_minervini %}white{% else %}dark{% endif %} text-center rounded">
                             {% if metrics.passes_minervini %}
-                                <h4 class="mb-0">✓ PASSES ALL CRITERIA</h4>
+                                <h4 class="mb-0">✓ PASSES ALL 8 CRITERIA + RS FILTER</h4>
                             {% else %}
-                                <h5 class="mb-0">{{ metrics.criteria_passed }}/9 Criteria Passed</h5>
+                                <h5 class="mb-0">{{ metrics.criteria_passed }}/8 Criteria Passed</h5>
                                 {% if metrics.criteria_failed %}
                                     <small class="text-muted">Failed: {{ metrics.criteria_failed }}</small>
                                 {% endif %}
@@ -711,6 +858,119 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- Chart.js Zoom Plugin -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<!-- Marked.js for Markdown Rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+<script>
+// Configure marked.js options
+marked.setOptions({
+    breaks: true,        // Convert \n to <br>
+    gfm: true,          // GitHub Flavored Markdown
+    headerIds: true,    // Add IDs to headers
+    mangle: false,      // Don't escape autolinked emails
+    sanitize: false     // Allow HTML (since we trust AI output)
+});
+</script>
+
+<style>
+/* Markdown content styling */
+.markdown-content {
+    line-height: 1.6;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+.markdown-body h1 { font-size: 2em; border-bottom: 2px solid #e5e5e5; padding-bottom: 0.3em; }
+.markdown-body h2 { font-size: 1.5em; border-bottom: 1px solid #e5e5e5; padding-bottom: 0.3em; }
+.markdown-body h3 { font-size: 1.25em; }
+.markdown-body h4 { font-size: 1.1em; }
+
+.markdown-body p {
+    margin-bottom: 1em;
+}
+
+.markdown-body ul, .markdown-body ol {
+    margin-left: 1.5em;
+    margin-bottom: 1em;
+}
+
+.markdown-body li {
+    margin-bottom: 0.25em;
+}
+
+.markdown-body code {
+    background-color: #f6f8fa;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.markdown-body pre {
+    background-color: #f6f8fa;
+    padding: 1em;
+    border-radius: 5px;
+    overflow-x: auto;
+    margin-bottom: 1em;
+}
+
+.markdown-body pre code {
+    background-color: transparent;
+    padding: 0;
+}
+
+.markdown-body blockquote {
+    border-left: 4px solid #0d6efd;
+    padding-left: 1em;
+    margin-left: 0;
+    color: #666;
+    font-style: italic;
+}
+
+.markdown-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1em;
+}
+
+.markdown-body table th, .markdown-body table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.markdown-body table th {
+    background-color: #f6f8fa;
+    font-weight: 600;
+}
+
+.markdown-body strong {
+    font-weight: 600;
+}
+
+.markdown-body em {
+    font-style: italic;
+}
+
+.markdown-body a {
+    color: #0d6efd;
+    text-decoration: none;
+}
+
+.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.markdown-body hr {
+    border: none;
+    border-top: 2px solid #e5e5e5;
+    margin: 1.5em 0;
+}
+</style>
 
 <script>
 // Stock Price Chart with Zoom/Pan and Date Filtering
@@ -963,8 +1223,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (data.success) {
-                // Show analysis result
-                contentDiv.textContent = data.analysis;
+                // Show analysis result with markdown rendering
+                const markdownHtml = marked.parse(data.analysis);
+                contentDiv.innerHTML = `<div class="markdown-body">${markdownHtml}</div>`;
                 
                 // Format date
                 const genDate = new Date(data.generated_at);
@@ -1022,6 +1283,14 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         return cookieValue;
+    }
+    
+    // Render initial markdown if analysis exists
+    const existingMarkdown = contentDiv.querySelector('.markdown-body');
+    if (existingMarkdown && existingMarkdown.textContent.trim()) {
+        const rawText = existingMarkdown.textContent;
+        const markdownHtml = marked.parse(rawText);
+        contentDiv.innerHTML = `<div class="markdown-body">${markdownHtml}</div>`;
     }
     
     // Watchlist functionality

@@ -2,14 +2,19 @@
 """
 Minervini Stock Analyzer (Enhanced with Company Fundamentals)
 
-Analyzes stocks based on Mark Minervini's trend template criteria:
-1. Stock price > 150-day MA and 200-day MA
-2. 150-day MA > 200-day MA
-3. 200-day MA trending up for at least 1 month
-4. 50-day MA > 150-day MA and 200-day MA
-5. Stock price > 50-day MA
-6. Stock price within 25% of 52-week high
-7. Relative Strength (RS) rating >= 70
+Analyzes stocks based on Mark Minervini's 8 Trend Template Criteria:
+(Reference: "Trade Like a Stock Market Wizard" by Mark Minervini)
+
+1. Current price above 150-day MA
+2. Current price above 200-day MA  
+3. 150-day MA trending upward (positive slope)
+4. 200-day MA trending upward for at least 1 month
+5. 50-day MA above 150-day MA
+6. 50-day MA above 200-day MA
+7. Price at least 30% above 52-week low
+8. Price within 25% of 52-week high
+
+Additional Filter: Relative Strength (RS) Rating >= 70 (IBD-style percentile ranking)
 
 ENHANCED FEATURES (using ticker_details table):
 - Market Cap Filtering: Automatically excludes stocks < $100M (too illiquid)
@@ -211,22 +216,47 @@ class MinerviniAnalyzer:
         return (float(result[0]) if result[0] is not None else None,
                 float(result[1]) if result[1] is not None else None)
     
+    def calculate_ma_trend(self, symbol, end_date, ma_period, trend_days=20):
+        """
+        Calculate the trend (slope) of a moving average over specified days.
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date to calculate trend for
+            ma_period: Moving average period (e.g., 150, 200)
+            trend_days: Days to measure trend over (default 20 ≈ 1 month)
+            
+        Returns:
+            float: Percentage change in MA over the period, or None
+        """
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        start_trend_date = (end_date_obj - timedelta(days=trend_days)).strftime("%Y-%m-%d")
+        
+        ma_today = self.calculate_moving_average(symbol, end_date, ma_period)
+        ma_trend_start = self.calculate_moving_average(symbol, start_trend_date, ma_period)
+        
+        if ma_today is None or ma_trend_start is None:
+            return None
+        
+        return ((ma_today - ma_trend_start) / ma_trend_start) * 100
+    
     def calculate_ma_200_trend(self, symbol, end_date):
         """
         Calculate the trend of 200-day MA over the last 20 days.
         Returns the change in MA over this period.
+        
+        Minervini requires 200-day MA trending up for at least 1 month.
         """
-        # Get 200-day MA for 20 days ago
-        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-        date_20d_ago = (end_date_obj - timedelta(days=20)).strftime("%Y-%m-%d")
+        return self.calculate_ma_trend(symbol, end_date, 200, 20)
+    
+    def calculate_ma_150_trend(self, symbol, end_date):
+        """
+        Calculate the trend of 150-day MA over the last 20 days.
+        Returns the change in MA over this period.
         
-        ma_today = self.calculate_moving_average(symbol, end_date, 200)
-        ma_20d_ago = self.calculate_moving_average(symbol, date_20d_ago, 200)
-        
-        if ma_today is None or ma_20d_ago is None:
-            return None
-        
-        return ((ma_today - ma_20d_ago) / ma_20d_ago) * 100
+        Minervini requires 150-day MA trending upward.
+        """
+        return self.calculate_ma_trend(symbol, end_date, 150, 20)
     
     def get_market_performance(self, end_date):
         """
@@ -282,42 +312,148 @@ class MinerviniAnalyzer:
         cursor.close()
         return market_avg
     
-    def calculate_relative_strength(self, symbol, end_date):
+    def calculate_all_stock_performances(self, end_date):
         """
-        Calculate relative strength comparing stock performance vs market benchmarks.
-        Uses cached market performance for efficiency.
-        Returns a score 0-100.
+        Calculate weighted performance for all stocks.
+        
+        IBD-style RS uses weighted 12-month performance:
+        - 40% weight on most recent quarter (63 days)
+        - 20% weight on Q2 (63-126 days)
+        - 20% weight on Q3 (126-189 days)
+        - 20% weight on Q4 (189-252 days)
+        
+        Args:
+            end_date: Date to calculate performances for
+            
+        Returns:
+            dict: {symbol: weighted_performance} for all stocks
         """
+        # Check cache first
+        cache_key = f"all_perf_{end_date}"
+        if hasattr(self, '_perf_cache') and cache_key in self._perf_cache:
+            return self._perf_cache[cache_key]
+        
+        if not hasattr(self, '_perf_cache'):
+            self._perf_cache = {}
+        
         cursor = self.conn.cursor()
-        
-        # Get stock performance over last 90 days
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-        start_date = (end_date_obj - timedelta(days=90)).strftime("%Y-%m-%d")
         
+        # Define quarters for weighted calculation
+        quarters = [
+            ((end_date_obj - timedelta(days=63)).strftime("%Y-%m-%d"), end_date, 0.40),   # Q1: most recent
+            ((end_date_obj - timedelta(days=126)).strftime("%Y-%m-%d"), 
+             (end_date_obj - timedelta(days=63)).strftime("%Y-%m-%d"), 0.20),              # Q2
+            ((end_date_obj - timedelta(days=189)).strftime("%Y-%m-%d"), 
+             (end_date_obj - timedelta(days=126)).strftime("%Y-%m-%d"), 0.20),             # Q3
+            ((end_date_obj - timedelta(days=252)).strftime("%Y-%m-%d"), 
+             (end_date_obj - timedelta(days=189)).strftime("%Y-%m-%d"), 0.20),             # Q4
+        ]
+        
+        # Get all symbols with sufficient data
         cursor.execute("""
-            SELECT close FROM stock_prices
-            WHERE symbol = %s AND date BETWEEN %s AND %s
-            ORDER BY date ASC
-        """, (symbol, start_date, end_date))
+            SELECT DISTINCT symbol FROM stock_prices
+            WHERE date = %s
+        """, (end_date,))
+        all_symbols = [row[0] for row in cursor.fetchall()]
         
-        prices = [float(row[0]) for row in cursor.fetchall()]
+        performances = {}
         
-        if len(prices) < 2:
-            return None
-        
-        stock_performance = ((prices[-1] - prices[0]) / prices[0]) * 100
-        
-        # Get cached market performance
-        market_avg = self.get_market_performance(end_date)
-        
-        # Convert to 0-100 scale where 50 is average
-        if stock_performance > market_avg:
-            rs_score = 50 + min(50, (stock_performance - market_avg) * 2)
-        else:
-            rs_score = 50 - min(50, (market_avg - stock_performance) * 2)
+        for symbol in all_symbols:
+            weighted_perf = 0
+            total_weight = 0
+            
+            for start_q, end_q, weight in quarters:
+                cursor.execute("""
+                    SELECT close FROM stock_prices
+                    WHERE symbol = %s AND date >= %s AND date <= %s
+                    ORDER BY date ASC
+                """, (symbol, start_q, end_q))
+                
+                prices = [float(row[0]) for row in cursor.fetchall()]
+                
+                if len(prices) >= 2:
+                    qtr_perf = ((prices[-1] - prices[0]) / prices[0]) * 100
+                    weighted_perf += qtr_perf * weight
+                    total_weight += weight
+            
+            if total_weight > 0:
+                # Normalize by actual weight used (in case some quarters missing)
+                performances[symbol] = weighted_perf / total_weight * (0.40 + 0.20 + 0.20 + 0.20)
         
         cursor.close()
-        return max(0, min(100, rs_score))
+        
+        # Cache the result
+        self._perf_cache[cache_key] = performances
+        return performances
+    
+    def calculate_rs_percentile_ranking(self, end_date):
+        """
+        Calculate IBD-style percentile RS ranking for all stocks.
+        
+        RS Rating is a percentile ranking (1-99) comparing each stock's
+        12-month weighted performance against all other stocks.
+        
+        Args:
+            end_date: Date to calculate rankings for
+            
+        Returns:
+            dict: {symbol: rs_percentile} for all stocks (1-99 scale)
+        """
+        # Check cache first
+        cache_key = f"rs_rank_{end_date}"
+        if hasattr(self, '_rs_cache') and cache_key in self._rs_cache:
+            return self._rs_cache[cache_key]
+        
+        if not hasattr(self, '_rs_cache'):
+            self._rs_cache = {}
+        
+        # Get all stock performances
+        performances = self.calculate_all_stock_performances(end_date)
+        
+        if not performances:
+            return {}
+        
+        # Sort by performance
+        sorted_symbols = sorted(performances.keys(), key=lambda s: performances[s])
+        total_stocks = len(sorted_symbols)
+        
+        # Calculate percentile rank for each stock
+        rs_rankings = {}
+        for rank, symbol in enumerate(sorted_symbols, 1):
+            # Percentile: what percentage of stocks this stock outperforms
+            percentile = int((rank / total_stocks) * 99)
+            rs_rankings[symbol] = max(1, min(99, percentile))
+        
+        # Cache the result
+        self._rs_cache[cache_key] = rs_rankings
+        return rs_rankings
+    
+    def calculate_relative_strength(self, symbol, end_date):
+        """
+        Calculate IBD-style Relative Strength rating for a stock.
+        
+        This is a PERCENTILE RANKING (1-99) comparing the stock's weighted
+        12-month performance against ALL other stocks in the database.
+        
+        - RS 99 = Top 1% performer (outperforms 99% of stocks)
+        - RS 70 = Outperforms 70% of stocks (Minervini's minimum)
+        - RS 50 = Average performer
+        - RS 1 = Bottom 1% performer
+        
+        IBD-style weighting:
+        - 40% weight on most recent quarter
+        - 20% weight each on prior 3 quarters
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date to calculate RS for
+            
+        Returns:
+            int: RS rating 1-99, or None if insufficient data
+        """
+        rs_rankings = self.calculate_rs_percentile_ranking(end_date)
+        return rs_rankings.get(symbol)
     
     def calculate_avg_dollar_volume(self, symbol, end_date, days=50):
         """
@@ -601,9 +737,11 @@ class MinerviniAnalyzer:
         
         for sic_code, sic_description in sic_codes:
             # Calculate average 90-day return for stocks in this sector
+            # Fixed: Use DISTINCT ON to avoid counting each symbol multiple times
             cursor.execute("""
                 WITH sector_stocks AS (
-                    SELECT sp.symbol,
+                    SELECT DISTINCT ON (sp.symbol) 
+                           sp.symbol,
                            FIRST_VALUE(sp.close) OVER (PARTITION BY sp.symbol ORDER BY sp.date ASC) as start_price,
                            LAST_VALUE(sp.close) OVER (PARTITION BY sp.symbol ORDER BY sp.date ASC 
                                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as end_price
@@ -611,10 +749,16 @@ class MinerviniAnalyzer:
                     JOIN ticker_details td ON sp.symbol = td.symbol
                     WHERE td.sic_code = %s
                     AND sp.date BETWEEN %s AND %s
+                ),
+                sector_returns AS (
+                    SELECT symbol,
+                           ((end_price - start_price) / NULLIF(start_price, 0) * 100) as return_pct
+                    FROM sector_stocks
+                    WHERE start_price > 0
                 )
-                SELECT AVG((end_price - start_price) / NULLIF(start_price, 0) * 100) as avg_return,
-                       COUNT(DISTINCT symbol) as stock_count
-                FROM sector_stocks
+                SELECT AVG(return_pct) as avg_return,
+                       COUNT(*) as stock_count
+                FROM sector_returns
             """, (sic_code, start_date, date))
             
             result = cursor.fetchone()
@@ -683,6 +827,345 @@ class MinerviniAnalyzer:
         if result:
             return float(result[0])
         return None
+    
+    def get_earnings_growth(self, symbol):
+        """
+        Calculate EPS and revenue growth rates from income statements.
+        
+        Minervini requires:
+        - 25%+ quarterly EPS growth (Year-over-Year comparison)
+        - Consistent YoY growth
+        - Earnings acceleration (YoY growth rate improving each quarter)
+        
+        Args:
+            symbol: Stock symbol
+            
+        Returns:
+            dict: Earnings growth metrics or None
+        """
+        cursor = self.conn.cursor()
+        
+        # Get last 8 quarters of data for YoY acceleration calculations
+        # We need 8 quarters to calculate YoY growth for 4 consecutive quarters
+        cursor.execute("""
+            SELECT 
+                period_end,
+                fiscal_year,
+                fiscal_quarter,
+                basic_earnings_per_share,
+                revenue
+            FROM income_statements
+            WHERE ticker = %s
+            AND timeframe = 'quarterly'
+            AND basic_earnings_per_share IS NOT NULL
+            ORDER BY period_end DESC
+            LIMIT 8
+        """, (symbol,))
+        
+        quarters = cursor.fetchall()
+        cursor.close()
+        
+        if len(quarters) < 2:
+            return None
+        
+        # Latest quarter
+        latest = quarters[0]
+        latest_eps = float(latest[3]) if latest[3] else None
+        latest_revenue = float(latest[4]) if latest[4] else None
+        
+        # Quarter-over-quarter (QoQ) growth (sequential)
+        qoq_eps_growth = None
+        if len(quarters) >= 2 and latest_eps and quarters[1][3]:
+            prev_quarter_eps = float(quarters[1][3])
+            if prev_quarter_eps > 0:
+                qoq_eps_growth = ((latest_eps - prev_quarter_eps) / prev_quarter_eps) * 100
+        
+        # Year-over-year (YoY) growth for latest quarter
+        yoy_eps_growth = None
+        yoy_revenue_growth = None
+        if len(quarters) >= 5:
+            year_ago = quarters[4]  # 4 quarters back = same quarter last year
+            year_ago_eps = float(year_ago[3]) if year_ago[3] else None
+            year_ago_revenue = float(year_ago[4]) if year_ago[4] else None
+            
+            if latest_eps and year_ago_eps and year_ago_eps > 0:
+                yoy_eps_growth = ((latest_eps - year_ago_eps) / year_ago_eps) * 100
+            
+            if latest_revenue and year_ago_revenue and year_ago_revenue > 0:
+                yoy_revenue_growth = ((latest_revenue - year_ago_revenue) / year_ago_revenue) * 100
+        
+        # Check for earnings acceleration (YoY growth rate improving each quarter)
+        # This is the TRUE Minervini acceleration check:
+        # - Q0 YoY growth > Q1 YoY growth > Q2 YoY growth
+        # (Each quarter's YoY growth is higher than the previous quarter's YoY growth)
+        acceleration = False
+        yoy_growth_rates = []
+        
+        if len(quarters) >= 8:
+            # Calculate YoY growth for each of the last 4 quarters
+            # quarters[0] vs quarters[4] = most recent YoY
+            # quarters[1] vs quarters[5] = previous quarter's YoY
+            # quarters[2] vs quarters[6] = 2 quarters ago YoY
+            # quarters[3] vs quarters[7] = 3 quarters ago YoY
+            for i in range(4):
+                current_q = quarters[i]
+                year_ago_q = quarters[i + 4]
+                
+                current_eps = float(current_q[3]) if current_q[3] else None
+                year_ago_eps = float(year_ago_q[3]) if year_ago_q[3] else None
+                
+                if current_eps and year_ago_eps and year_ago_eps > 0:
+                    yoy_growth = ((current_eps - year_ago_eps) / year_ago_eps) * 100
+                    yoy_growth_rates.append(yoy_growth)
+            
+            # Acceleration = YoY growth rate is improving each quarter
+            # yoy_growth_rates[0] is most recent, should be >= yoy_growth_rates[1], etc.
+            if len(yoy_growth_rates) >= 3:
+                acceleration = all(
+                    yoy_growth_rates[i] >= yoy_growth_rates[i+1] 
+                    for i in range(len(yoy_growth_rates)-1)
+                )
+        
+        return {
+            'latest_eps': latest_eps,
+            'latest_revenue': latest_revenue,
+            'qoq_eps_growth': qoq_eps_growth,
+            'yoy_eps_growth': yoy_eps_growth,
+            'yoy_revenue_growth': yoy_revenue_growth,
+            'earnings_acceleration': acceleration,
+            'quarters_available': len(quarters),
+            'yoy_growth_rates': yoy_growth_rates if yoy_growth_rates else None  # For debugging
+        }
+    
+    def get_earnings_surprises(self, symbol, num_quarters=4):
+        """
+        Get recent earnings surprise history (beat/miss patterns).
+        
+        Minervini prefers stocks that consistently beat estimates.
+        
+        Args:
+            symbol: Stock symbol
+            num_quarters: Number of recent quarters to check
+            
+        Returns:
+            dict: Surprise statistics or None
+        """
+        cursor = self.conn.cursor()
+        
+        # Get last N earnings with surprises
+        cursor.execute("""
+            SELECT 
+                date,
+                actual_eps,
+                estimated_eps,
+                eps_surprise_percent,
+                actual_revenue,
+                estimated_revenue,
+                revenue_surprise_percent
+            FROM earnings
+            WHERE ticker = %s
+            AND actual_eps IS NOT NULL
+            AND estimated_eps IS NOT NULL
+            ORDER BY date DESC
+            LIMIT %s
+        """, (symbol, num_quarters))
+        
+        results = cursor.fetchall()
+        cursor.close()
+        
+        if not results:
+            return None
+        
+        eps_surprises = []
+        revenue_surprises = []
+        beats = 0
+        misses = 0
+        
+        for row in results:
+            if row[3] is not None:  # eps_surprise_percent
+                eps_surprises.append(float(row[3]))
+                if float(row[3]) > 0:
+                    beats += 1
+                else:
+                    misses += 1
+            
+            if row[6] is not None:  # revenue_surprise_percent
+                revenue_surprises.append(float(row[6]))
+        
+        avg_eps_surprise = sum(eps_surprises) / len(eps_surprises) if eps_surprises else None
+        avg_revenue_surprise = sum(revenue_surprises) / len(revenue_surprises) if revenue_surprises else None
+        
+        # Consistency: All beats = very strong
+        all_beats = beats == len(results) and misses == 0
+        mostly_beats = beats >= len(results) * 0.75 if len(results) > 0 else False
+        
+        return {
+            'total_earnings': len(results),
+            'beats': beats,
+            'misses': misses,
+            'avg_eps_surprise': avg_eps_surprise,
+            'avg_revenue_surprise': avg_revenue_surprise,
+            'all_beats': all_beats,
+            'mostly_beats': mostly_beats
+        }
+    
+    def check_upcoming_earnings(self, symbol, date, days_ahead=14):
+        """
+        Check if earnings announcement is coming soon.
+        
+        Minervini typically avoids buying right before earnings (2 weeks).
+        
+        Args:
+            symbol: Stock symbol
+            date: Current date
+            days_ahead: Days to look ahead (default 14)
+            
+        Returns:
+            dict: Upcoming earnings info or None
+        """
+        cursor = self.conn.cursor()
+        
+        end_date_obj = datetime.strptime(date, "%Y-%m-%d")
+        future_date = (end_date_obj + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+        
+        cursor.execute("""
+            SELECT 
+                date,
+                time,
+                estimated_eps,
+                date_status,
+                importance
+            FROM earnings
+            WHERE ticker = %s
+            AND date > %s
+            AND date <= %s
+            ORDER BY date ASC
+            LIMIT 1
+        """, (symbol, date, future_date))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        
+        if result:
+            earnings_date = result[0]
+            days_until = (earnings_date - end_date_obj.date()).days if isinstance(earnings_date, datetime.date) else None
+            
+            return {
+                'has_upcoming_earnings': True,
+                'earnings_date': earnings_date,
+                'days_until': days_until,
+                'estimated_eps': float(result[2]) if result[2] else None,
+                'date_status': result[3],
+                'importance': result[4]
+            }
+        
+        return {
+            'has_upcoming_earnings': False,
+            'earnings_date': None,
+            'days_until': None
+        }
+    
+    def evaluate_earnings_quality(self, symbol, date):
+        """
+        Evaluate overall earnings quality based on Minervini criteria.
+        
+        Minervini's Earnings Requirements (SEPA):
+        - 25%+ quarterly EPS growth
+        - Consistent YoY growth
+        - Earnings acceleration preferred
+        - Consistent estimate beats
+        - No upcoming earnings (within 2 weeks)
+        
+        Returns:
+            dict: Earnings quality metrics and pass/fail
+        """
+        # Get earnings growth
+        growth = self.get_earnings_growth(symbol)
+        
+        # Get earnings surprises
+        surprises = self.get_earnings_surprises(symbol)
+        
+        # Check upcoming earnings
+        upcoming = self.check_upcoming_earnings(symbol, date)
+        
+        # Evaluate against Minervini criteria
+        passes_earnings = True
+        earnings_score = 0
+        max_score = 100
+        issues = []
+        
+        if not growth or not growth.get('latest_eps'):
+            # No earnings data = can't evaluate
+            return {
+                'has_earnings_data': False,
+                'passes_earnings_criteria': None,
+                'earnings_score': 0,
+                'issues': ['No earnings data available'],
+                'growth': None,
+                'surprises': None,
+                'upcoming': upcoming
+            }
+        
+        # Check YoY EPS growth (Minervini wants 25%+)
+        if growth.get('yoy_eps_growth') is not None:
+            yoy_growth = growth['yoy_eps_growth']
+            if yoy_growth >= 25:
+                earnings_score += 30  # Strong growth
+            elif yoy_growth >= 15:
+                earnings_score += 20  # Good growth
+            elif yoy_growth >= 5:
+                earnings_score += 10  # Modest growth
+            else:
+                passes_earnings = False
+                issues.append(f"Low YoY EPS growth ({yoy_growth:.1f}% < 25%)")
+        else:
+            earnings_score += 10  # Give some credit if we have recent data
+        
+        # Check QoQ growth (acceleration signal)
+        if growth.get('qoq_eps_growth') is not None:
+            qoq_growth = growth['qoq_eps_growth']
+            if qoq_growth >= 20:
+                earnings_score += 20
+            elif qoq_growth >= 10:
+                earnings_score += 15
+            elif qoq_growth < 0:
+                passes_earnings = False
+                issues.append(f"Negative QoQ EPS growth ({qoq_growth:.1f}%)")
+        
+        # Check earnings acceleration
+        if growth.get('earnings_acceleration'):
+            earnings_score += 20
+        
+        # Check surprise history
+        if surprises:
+            if surprises.get('all_beats'):
+                earnings_score += 20  # Perfect beat record
+            elif surprises.get('mostly_beats'):
+                earnings_score += 15  # Good beat record
+            elif surprises['beats'] < surprises['misses']:
+                passes_earnings = False
+                issues.append(f"More misses than beats ({surprises['misses']} misses)")
+        
+        # Check revenue growth
+        if growth.get('yoy_revenue_growth') is not None:
+            if growth['yoy_revenue_growth'] >= 15:
+                earnings_score += 10
+            elif growth['yoy_revenue_growth'] < 0:
+                issues.append(f"Negative revenue growth ({growth['yoy_revenue_growth']:.1f}%)")
+        
+        # Upcoming earnings warning (not a disqualifier, but a caution)
+        if upcoming.get('has_upcoming_earnings'):
+            issues.append(f"⚠️ Earnings in {upcoming['days_until']} days - consider waiting")
+        
+        return {
+            'has_earnings_data': True,
+            'passes_earnings_criteria': passes_earnings,
+            'earnings_score': min(earnings_score, max_score),
+            'issues': issues,
+            'growth': growth,
+            'surprises': surprises,
+            'upcoming': upcoming
+        }
 
     def detect_vcp(self, symbol, end_date, lookback_days=120):
         """
@@ -980,6 +1463,7 @@ class MinerviniAnalyzer:
         ma_200 = self.calculate_moving_average(symbol, date, 200)
         week_52_high, week_52_low = self.get_52_week_high_low(symbol, date)
         ma_200_trend = self.calculate_ma_200_trend(symbol, date)
+        ma_150_trend = self.calculate_ma_150_trend(symbol, date)  # NEW: 150-day MA trend
         relative_strength = self.calculate_relative_strength(symbol, date)
         
         # Detect VCP pattern
@@ -993,31 +1477,61 @@ class MinerviniAnalyzer:
         is_52w_high, days_since_52w_high = self.calculate_new_high_metrics(symbol, date)
         industry_rs = self.get_industry_rs(symbol, date)
         
+        # Evaluate earnings quality (fundamental analysis)
+        earnings_quality = self.evaluate_earnings_quality(symbol, date)
+        
         # Check if we have enough data
-        if None in [ma_50, ma_150, ma_200, week_52_high]:
+        if None in [ma_50, ma_150, ma_200, week_52_high, week_52_low]:
             return None
         
-        # Calculate percent from 52-week high
+        # Calculate percent from 52-week high and low
         percent_from_52w_high = ((close_price - week_52_high) / week_52_high) * 100
+        percent_from_52w_low = ((close_price - week_52_low) / week_52_low) * 100  # NEW
         
-        # Evaluate Minervini criteria
+        # Evaluate Minervini's 8 Trend Template Criteria + RS filter
+        # Reference: "Trade Like a Stock Market Wizard" by Mark Minervini
         criteria = {
+            # Criterion 1: Current price above 150-day MA
             'price_above_150ma': close_price > ma_150,
+            
+            # Criterion 2: Current price above 200-day MA
             'price_above_200ma': close_price > ma_200,
-            'ma_150_above_200': ma_150 > ma_200,
+            
+            # Criterion 3: 150-day MA trending upward (slope check)
+            'ma_150_trending_up': ma_150_trend is not None and ma_150_trend > 0,
+            
+            # Criterion 4: 200-day MA trending upward for at least 1 month
             'ma_200_trending_up': ma_200_trend is not None and ma_200_trend > 0,
+            
+            # Criterion 5: 50-day MA above 150-day MA
             'ma_50_above_150': ma_50 > ma_150,
+            
+            # Criterion 6: 50-day MA above 200-day MA
             'ma_50_above_200': ma_50 > ma_200,
-            'price_above_50ma': close_price > ma_50,
-            'within_25_percent_of_high': percent_from_52w_high >= -25,
+            
+            # Criterion 7: Price at least 30% above 52-week low
+            'above_30pct_52w_low': percent_from_52w_low >= 30,
+            
+            # Criterion 8: Price within 25% of 52-week high
+            'within_25pct_of_high': percent_from_52w_high >= -25,
+        }
+        
+        # Additional filter: RS Rating >= 70 (Minervini recommends 80+ preferred)
+        rs_filter = {
             'rs_above_70': relative_strength is not None and relative_strength >= 70
         }
         
+        # Count criteria passed (8 core criteria)
         criteria_passed = sum(criteria.values())
-        passes_all = all(criteria.values())
         
-        # Create list of failed criteria
-        failed_criteria = [k for k, v in criteria.items() if not v]
+        # Stock passes if ALL 8 criteria met AND RS filter passes
+        passes_all_criteria = all(criteria.values())
+        passes_rs = all(rs_filter.values())
+        passes_all = passes_all_criteria and passes_rs
+        
+        # Create list of failed criteria (include RS in the list)
+        all_checks = {**criteria, **rs_filter}
+        failed_criteria = [k for k, v in all_checks.items() if not v]
         
         # Determine stage
         stage = self.determine_stage(
@@ -1042,6 +1556,60 @@ class MinerviniAnalyzer:
                     # Effectively raises the bar for these riskier stocks
                     if relative_strength < 80:
                         passes_all = False
+                        if 'micro_cap_rs_too_low' not in failed_criteria:
+                            failed_criteria.append('micro_cap_rs_too_low')
+        
+        # Apply earnings-based filtering (if earnings data available)
+        # Note: We don't disqualify stocks without earnings data, but boost those with strong earnings
+        if earnings_quality['has_earnings_data']:
+            # If stock passes technical criteria, apply earnings filter
+            if passes_all and not earnings_quality['passes_earnings_criteria']:
+                # Stock has weak fundamentals - demote it
+                passes_all = False
+                failed_criteria.append('weak_earnings')
+            
+            # Additional filter for upcoming earnings warning
+            if earnings_quality['upcoming']['has_upcoming_earnings']:
+                days_until = earnings_quality['upcoming']['days_until']
+                if days_until and days_until <= 7:
+                    # Very close to earnings - high risk
+                    # Note: Not a hard disqualifier, but flagged
+                    pass
+        
+        # Extract earnings metrics for storage
+        eps_growth_yoy = None
+        eps_growth_qoq = None
+        revenue_growth_yoy = None
+        earnings_acceleration = False
+        avg_eps_surprise = None
+        earnings_beat_rate = None
+        has_upcoming_earnings = False
+        days_until_earnings = None
+        earnings_quality_score = 0
+        passes_earnings = None
+        
+        if earnings_quality['has_earnings_data']:
+            growth = earnings_quality.get('growth', {})
+            surprises = earnings_quality.get('surprises', {})
+            upcoming = earnings_quality.get('upcoming', {})
+            
+            eps_growth_yoy = growth.get('yoy_eps_growth') if growth else None
+            eps_growth_qoq = growth.get('qoq_eps_growth') if growth else None
+            revenue_growth_yoy = growth.get('yoy_revenue_growth') if growth else None
+            earnings_acceleration = growth.get('earnings_acceleration', False) if growth else False
+            
+            if surprises:
+                avg_eps_surprise = surprises.get('avg_eps_surprise')
+                total = surprises.get('total_earnings', 0)
+                beats = surprises.get('beats', 0)
+                earnings_beat_rate = (beats / total * 100) if total > 0 else None
+            
+            if upcoming:
+                has_upcoming_earnings = upcoming.get('has_upcoming_earnings', False)
+                days_until_earnings = upcoming.get('days_until')
+            
+            earnings_quality_score = earnings_quality.get('earnings_score', 0)
+            passes_earnings = earnings_quality.get('passes_earnings_criteria')
         
         metrics = {
             'symbol': symbol,
@@ -1053,11 +1621,13 @@ class MinerviniAnalyzer:
             'week_52_high': week_52_high,
             'week_52_low': week_52_low,
             'percent_from_52w_high': percent_from_52w_high,
+            'percent_from_52w_low': percent_from_52w_low,  # NEW: for 30% above low criterion
+            'ma_150_trend_20d': ma_150_trend,  # NEW: 150-day MA trend
             'ma_200_trend_20d': ma_200_trend,
             'relative_strength': relative_strength,
             'stage': stage,
             'passes_minervini': passes_all,
-            'criteria_passed': criteria_passed,
+            'criteria_passed': criteria_passed,  # Now counts 8 core criteria
             'criteria_failed': ','.join(failed_criteria),
             # VCP metrics
             'vcp_detected': vcp_data['vcp_detected'],
@@ -1066,7 +1636,7 @@ class MinerviniAnalyzer:
             'latest_contraction_pct': vcp_data['latest_contraction_pct'],
             'volume_contraction': vcp_data['volume_contraction'],
             'pivot_price': vcp_data['pivot_price'],
-            # Enhanced metrics (new)
+            # Enhanced metrics
             'avg_dollar_volume': avg_dollar_volume,
             'volume_ratio': volume_ratio,
             'return_1m': returns['return_1m'],
@@ -1078,10 +1648,22 @@ class MinerviniAnalyzer:
             'is_52w_high': is_52w_high,
             'days_since_52w_high': days_since_52w_high,
             'industry_rs': industry_rs,
+            # Earnings/Fundamental metrics
+            'eps_growth_yoy': eps_growth_yoy,
+            'eps_growth_qoq': eps_growth_qoq,
+            'revenue_growth_yoy': revenue_growth_yoy,
+            'earnings_acceleration': earnings_acceleration,
+            'avg_eps_surprise': avg_eps_surprise,
+            'earnings_beat_rate': earnings_beat_rate,
+            'has_upcoming_earnings': has_upcoming_earnings,
+            'days_until_earnings': days_until_earnings,
+            'earnings_quality_score': earnings_quality_score,
+            'passes_earnings': passes_earnings,
             # Ticker context (for logging/debugging)
             '_market_cap_tier': market_cap_tier,
             '_liquidity_score': liquidity_score,
-            '_institutional_quality': institutional_quality
+            '_institutional_quality': institutional_quality,
+            '_earnings_issues': earnings_quality.get('issues', [])
         }
         
         return metrics
@@ -1093,16 +1675,20 @@ class MinerviniAnalyzer:
         cursor.execute("""
             INSERT INTO minervini_metrics
             (symbol, date, close_price, ma_50, ma_150, ma_200, 
-             week_52_high, week_52_low, percent_from_52w_high,
-             ma_200_trend_20d, relative_strength, stage, passes_minervini,
+             week_52_high, week_52_low, percent_from_52w_high, percent_from_52w_low,
+             ma_150_trend_20d, ma_200_trend_20d, relative_strength, stage, passes_minervini,
              criteria_passed, criteria_failed,
              vcp_detected, vcp_score, contraction_count, latest_contraction_pct,
              volume_contraction, pivot_price,
              avg_dollar_volume, volume_ratio,
              return_1m, return_3m, return_6m, return_12m,
              atr_14, atr_percent,
-             is_52w_high, days_since_52w_high, industry_rs)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             is_52w_high, days_since_52w_high, industry_rs,
+             eps_growth_yoy, eps_growth_qoq, revenue_growth_yoy,
+             earnings_acceleration, avg_eps_surprise, earnings_beat_rate,
+             has_upcoming_earnings, days_until_earnings,
+             earnings_quality_score, passes_earnings)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -1112,6 +1698,8 @@ class MinerviniAnalyzer:
                 week_52_high = EXCLUDED.week_52_high,
                 week_52_low = EXCLUDED.week_52_low,
                 percent_from_52w_high = EXCLUDED.percent_from_52w_high,
+                percent_from_52w_low = EXCLUDED.percent_from_52w_low,
+                ma_150_trend_20d = EXCLUDED.ma_150_trend_20d,
                 ma_200_trend_20d = EXCLUDED.ma_200_trend_20d,
                 relative_strength = EXCLUDED.relative_strength,
                 stage = EXCLUDED.stage,
@@ -1134,7 +1722,17 @@ class MinerviniAnalyzer:
                 atr_percent = EXCLUDED.atr_percent,
                 is_52w_high = EXCLUDED.is_52w_high,
                 days_since_52w_high = EXCLUDED.days_since_52w_high,
-                industry_rs = EXCLUDED.industry_rs
+                industry_rs = EXCLUDED.industry_rs,
+                eps_growth_yoy = EXCLUDED.eps_growth_yoy,
+                eps_growth_qoq = EXCLUDED.eps_growth_qoq,
+                revenue_growth_yoy = EXCLUDED.revenue_growth_yoy,
+                earnings_acceleration = EXCLUDED.earnings_acceleration,
+                avg_eps_surprise = EXCLUDED.avg_eps_surprise,
+                earnings_beat_rate = EXCLUDED.earnings_beat_rate,
+                has_upcoming_earnings = EXCLUDED.has_upcoming_earnings,
+                days_until_earnings = EXCLUDED.days_until_earnings,
+                earnings_quality_score = EXCLUDED.earnings_quality_score,
+                passes_earnings = EXCLUDED.passes_earnings
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -1145,6 +1743,8 @@ class MinerviniAnalyzer:
             metrics['week_52_high'],
             metrics['week_52_low'],
             metrics['percent_from_52w_high'],
+            metrics['percent_from_52w_low'],
+            metrics['ma_150_trend_20d'],
             metrics['ma_200_trend_20d'],
             metrics['relative_strength'],
             metrics['stage'],
@@ -1167,7 +1767,17 @@ class MinerviniAnalyzer:
             metrics['atr_percent'],
             metrics['is_52w_high'],
             metrics['days_since_52w_high'],
-            metrics['industry_rs']
+            metrics['industry_rs'],
+            metrics['eps_growth_yoy'],
+            metrics['eps_growth_qoq'],
+            metrics['revenue_growth_yoy'],
+            metrics['earnings_acceleration'],
+            metrics['avg_eps_surprise'],
+            metrics['earnings_beat_rate'],
+            metrics['has_upcoming_earnings'],
+            metrics['days_until_earnings'],
+            metrics['earnings_quality_score'],
+            metrics['passes_earnings']
         ))
         
         self.conn.commit()
@@ -1192,6 +1802,11 @@ class MinerviniAnalyzer:
         market_perf = self.get_market_performance(date)
         benchmark_list = ', '.join([f"{sym}({w*100:.0f}%)" for sym, w in self.market_benchmarks.items()])
         print(f"Market performance (90-day): {market_perf:+.2f}% (weighted: {benchmark_list})")
+        
+        # Pre-calculate IBD-style RS percentile rankings (cached for all stocks)
+        print("Calculating RS percentile rankings for all stocks...")
+        rs_rankings = self.calculate_rs_percentile_ranking(date)
+        print(f"  Ranked {len(rs_rankings)} stocks by relative strength")
         
         # Pre-calculate sector performance for industry RS
         print("Calculating sector performance...")
@@ -1222,7 +1837,19 @@ class MinerviniAnalyzer:
                             quality = "⭐" if metrics.get('_institutional_quality') else ""
                             cap_info = f" [{tier}{quality}]"
                         
-                        print(f"  ✓ {symbol}: PASSED - Stage {metrics['stage']} ({metrics['criteria_passed']}/9 criteria){vcp_info}{cap_info}")
+                        # Add earnings context if available
+                        earnings_info = ""
+                        if metrics.get('eps_growth_yoy') is not None:
+                            yoy = metrics['eps_growth_yoy']
+                            accel = "🚀" if metrics.get('earnings_acceleration') else ""
+                            earnings_info = f" [EPS: {yoy:+.0f}%{accel}]"
+                            
+                            # Warning for upcoming earnings
+                            if metrics.get('has_upcoming_earnings') and metrics.get('days_until_earnings'):
+                                if metrics['days_until_earnings'] <= 7:
+                                    earnings_info += f" ⚠️ Earnings in {metrics['days_until_earnings']}d"
+                        
+                        print(f"  ✓ {symbol}: PASSED - Stage {metrics['stage']} ({metrics['criteria_passed']}/8 criteria, RS={metrics['relative_strength']:.0f}){vcp_info}{cap_info}{earnings_info}")
                 else:
                     skipped += 1
                 
@@ -1289,11 +1916,18 @@ class MinerviniAnalyzer:
                    mm.percent_from_52w_high, mm.vcp_detected, mm.vcp_score, mm.pivot_price,
                    mm.avg_dollar_volume, mm.volume_ratio, mm.industry_rs,
                    mm.return_1m, mm.return_3m, mm.atr_percent, mm.is_52w_high,
+                   mm.eps_growth_yoy, mm.eps_growth_qoq, mm.earnings_acceleration,
+                   mm.earnings_beat_rate, mm.has_upcoming_earnings, mm.days_until_earnings,
+                   mm.earnings_quality_score, mm.passes_earnings,
                    td.market_cap, td.name
             FROM minervini_metrics mm
             LEFT JOIN ticker_details td ON mm.symbol = td.symbol
             WHERE mm.date = %s AND mm.passes_minervini = true
-            ORDER BY mm.relative_strength DESC, mm.industry_rs DESC NULLS LAST
+            ORDER BY 
+                mm.passes_earnings DESC NULLS LAST,
+                mm.earnings_quality_score DESC NULLS LAST,
+                mm.relative_strength DESC, 
+                mm.industry_rs DESC NULLS LAST
             LIMIT %s
         """, (date, limit))
         
@@ -1335,42 +1969,57 @@ def main():
     
     # Show top stocks
     if passed > 0:
-        print("\n" + "=" * 120)
-        print("TOP STOCKS PASSING MINERVINI CRITERIA (Enhanced)")
-        print("=" * 120)
+        print("\n" + "=" * 140)
+        print("TOP STOCKS PASSING MINERVINI CRITERIA (Enhanced with Earnings)")
+        print("=" * 140)
         
         top_stocks = analyzer.get_top_stocks(target_date, limit=20)
         
         # Header row
-        print(f"\n{'Symbol':<8} {'Price':>9} {'RS':>5} {'IndRS':>6} {'Stage':>5} "
-              f"{'%52wH':>7} {'1M%':>7} {'3M%':>7} {'$Vol(M)':>9} {'VolR':>5} "
-              f"{'ATR%':>5} {'VCP':>4} {'New Hi':>6}")
-        print("-" * 120)
+        print(f"\n{'Symbol':<8} {'Price':>9} {'RS':>5} {'IndRS':>6} {'EPSyy':>7} {'EPSqq':>7} "
+              f"{'Beat%':>6} {'ErnQual':>7} {'3M%':>7} {'$Vol(M)':>9} {'VCP':>4} {'Earn':>5}")
+        print("-" * 140)
         
         for stock in top_stocks:
             (symbol, price, rs, stage, pct_high, vcp_detected, vcp_score, pivot,
              avg_dv, vol_ratio, ind_rs, ret_1m, ret_3m, atr_pct, is_new_high,
+             eps_yoy, eps_qoq, accel, beat_rate, upcoming, days_until, eq_score, passes_earn,
              market_cap, name) = stock
             
             # Format values with fallbacks for None
             rs_str = f"{rs:.0f}" if rs else "-"
             ind_rs_str = f"{ind_rs:.0f}" if ind_rs else "-"
-            pct_high_str = f"{pct_high:.1f}%" if pct_high else "-"
-            ret_1m_str = f"{ret_1m:+.1f}%" if ret_1m else "-"
+            eps_yoy_str = f"{eps_yoy:+.0f}%" if eps_yoy is not None else "-"
+            eps_qoq_str = f"{eps_qoq:+.0f}%" if eps_qoq is not None else "-"
+            beat_str = f"{beat_rate:.0f}%" if beat_rate is not None else "-"
+            eq_str = f"{eq_score}/100" if eq_score else "-"
             ret_3m_str = f"{ret_3m:+.1f}%" if ret_3m else "-"
             avg_dv_str = f"{avg_dv/1_000_000:.1f}" if avg_dv else "-"
-            vol_ratio_str = f"{vol_ratio:.1f}" if vol_ratio else "-"
-            atr_str = f"{atr_pct:.1f}" if atr_pct else "-"
             vcp_str = f"{vcp_score:.0f}" if vcp_detected else "-"
-            new_hi_str = "★" if is_new_high else ""
             
-            print(f"{symbol:<8} ${price:>8.2f} {rs_str:>5} {ind_rs_str:>6} {stage:>5} "
-                  f"{pct_high_str:>7} {ret_1m_str:>7} {ret_3m_str:>7} {avg_dv_str:>9} {vol_ratio_str:>5} "
-                  f"{atr_str:>5} {vcp_str:>4} {new_hi_str:>6}")
+            # Earnings status
+            earn_status = ""
+            if passes_earn is True:
+                earn_status = "✓"
+            elif passes_earn is False:
+                earn_status = "✗"
+            elif upcoming and days_until and days_until <= 7:
+                earn_status = f"{days_until}d"
+            else:
+                earn_status = "-"
+            
+            # Acceleration indicator
+            if accel:
+                eps_qoq_str += "🚀"
+            
+            print(f"{symbol:<8} ${price:>8.2f} {rs_str:>5} {ind_rs_str:>6} {eps_yoy_str:>7} {eps_qoq_str:>7} "
+                  f"{beat_str:>6} {eq_str:>7} {ret_3m_str:>7} {avg_dv_str:>9} {vcp_str:>4} {earn_status:>5}")
         
-        print("\n" + "-" * 120)
-        print("Legend: RS=Relative Strength, IndRS=Industry RS, $Vol(M)=Avg Dollar Volume in Millions,")
-        print("        VolR=Volume Ratio (today vs 50d avg), ATR%=Volatility, VCP=VCP Score, ★=New 52w High")
+        print("\n" + "-" * 140)
+        print("Legend: RS=Relative Strength, IndRS=Industry RS, EPSyy=EPS YoY Growth, EPSqq=EPS QoQ Growth,")
+        print("        Beat%=Earnings Beat Rate (last 4 qtrs), ErnQual=Earnings Quality Score,")
+        print("        $Vol(M)=Avg Dollar Volume in Millions, VCP=VCP Score, Earn=Earnings Status (✓/✗/days until)")
+        print("        🚀=Earnings Accelerating")
     
     # Close connection
     analyzer.close()

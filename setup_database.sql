@@ -135,6 +135,118 @@ CREATE INDEX IF NOT EXISTS idx_ticker_details_active ON ticker_details(active);
 CREATE INDEX IF NOT EXISTS idx_ticker_details_updated_at ON ticker_details(updated_at DESC);
 
 -- ============================================================================
+-- 2026-02-05: Add Earnings Data table (Benzinga API)
+-- Stores historical and upcoming earnings announcements
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS earnings (
+    id SERIAL PRIMARY KEY,
+    ticker VARCHAR(20) NOT NULL,
+    date DATE NOT NULL,
+    time TIME,
+    fiscal_year INTEGER,
+    fiscal_period VARCHAR(10),
+    currency VARCHAR(10),
+    actual_eps NUMERIC(10, 4),
+    estimated_eps NUMERIC(10, 4),
+    eps_surprise NUMERIC(10, 4),
+    eps_surprise_percent NUMERIC(10, 2),
+    eps_method VARCHAR(10),
+    actual_revenue BIGINT,
+    estimated_revenue BIGINT,
+    revenue_surprise BIGINT,
+    revenue_surprise_percent NUMERIC(10, 2),
+    revenue_method VARCHAR(10),
+    previous_eps NUMERIC(10, 4),
+    previous_revenue BIGINT,
+    company_name VARCHAR(255),
+    importance INTEGER,
+    date_status VARCHAR(20),
+    notes TEXT,
+    benzinga_id VARCHAR(50) UNIQUE,
+    last_updated TIMESTAMPTZ,
+    fetched_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(ticker, date, fiscal_period, fiscal_year)
+);
+
+-- Indices for earnings queries
+CREATE INDEX IF NOT EXISTS idx_earnings_ticker ON earnings(ticker);
+CREATE INDEX IF NOT EXISTS idx_earnings_date ON earnings(date DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_ticker_date ON earnings(ticker, date DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_fiscal ON earnings(fiscal_year DESC, fiscal_period);
+CREATE INDEX IF NOT EXISTS idx_earnings_surprise ON earnings(eps_surprise_percent DESC) WHERE eps_surprise_percent IS NOT NULL;
+
+-- ============================================================================
+-- 2026-02-05: Add Income Statements table (Financials API)
+-- Stores quarterly/annual financial statements from SEC filings
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS income_statements (
+    id SERIAL PRIMARY KEY,
+    cik VARCHAR(20) NOT NULL,
+    tickers TEXT[],  -- Array of ticker symbols
+    ticker VARCHAR(20),  -- Primary ticker (extracted from array)
+    period_end DATE NOT NULL,
+    filing_date DATE,
+    fiscal_year INTEGER,
+    fiscal_quarter INTEGER,
+    timeframe VARCHAR(30),  -- quarterly, annual, trailing_twelve_months
+    
+    -- Revenue & Profitability
+    revenue BIGINT,
+    cost_of_revenue BIGINT,
+    gross_profit BIGINT,
+    operating_income BIGINT,
+    net_income_loss_attributable_common_shareholders BIGINT,
+    consolidated_net_income_loss BIGINT,
+    
+    -- Earnings Per Share
+    basic_earnings_per_share NUMERIC(10, 4),
+    diluted_earnings_per_share NUMERIC(10, 4),
+    basic_shares_outstanding BIGINT,
+    diluted_shares_outstanding BIGINT,
+    
+    -- Operating Expenses
+    total_operating_expenses BIGINT,
+    selling_general_administrative BIGINT,
+    research_development BIGINT,
+    depreciation_depletion_amortization BIGINT,
+    other_operating_expenses BIGINT,
+    
+    -- Other Income/Expenses
+    total_other_income_expense BIGINT,
+    interest_income BIGINT,
+    interest_expense BIGINT,
+    other_income_expense BIGINT,
+    
+    -- Tax & Special Items
+    income_before_income_taxes BIGINT,
+    income_taxes BIGINT,
+    discontinued_operations BIGINT,
+    extraordinary_items BIGINT,
+    
+    -- Calculated Metrics
+    ebitda BIGINT,
+    
+    -- Other
+    equity_in_affiliates BIGINT,
+    noncontrolling_interest BIGINT,
+    preferred_stock_dividends_declared BIGINT,
+    
+    fetched_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE(cik, period_end, timeframe)
+);
+
+-- Indices for income statement queries
+CREATE INDEX IF NOT EXISTS idx_income_stmt_ticker ON income_statements(ticker);
+CREATE INDEX IF NOT EXISTS idx_income_stmt_period ON income_statements(period_end DESC);
+CREATE INDEX IF NOT EXISTS idx_income_stmt_ticker_period ON income_statements(ticker, period_end DESC);
+CREATE INDEX IF NOT EXISTS idx_income_stmt_fiscal ON income_statements(fiscal_year DESC, fiscal_quarter);
+CREATE INDEX IF NOT EXISTS idx_income_stmt_timeframe ON income_statements(timeframe);
+CREATE INDEX IF NOT EXISTS idx_income_stmt_cik ON income_statements(cik);
+
+-- ============================================================================
 -- 2026-02-05: Enhanced Minervini Metrics
 -- Additional technical indicators calculated from existing price/volume data
 -- ============================================================================
@@ -160,10 +272,26 @@ ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS days_since_52w_high INTEG
 -- Industry/Sector relative strength
 ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS industry_rs NUMERIC(10, 2);  -- Industry group RS score
 
+-- Earnings/Fundamental metrics (integrated from earnings and income_statements tables)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS eps_growth_yoy NUMERIC(10, 2);      -- Year-over-year EPS growth %
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS eps_growth_qoq NUMERIC(10, 2);      -- Quarter-over-quarter EPS growth %
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS revenue_growth_yoy NUMERIC(10, 2);  -- Year-over-year revenue growth %
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS earnings_acceleration BOOLEAN;      -- Earnings accelerating
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS avg_eps_surprise NUMERIC(10, 2);    -- Avg EPS surprise % (last 4 qtrs)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS earnings_beat_rate NUMERIC(5, 2);   -- % of earnings beats (last 4 qtrs)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS has_upcoming_earnings BOOLEAN;      -- Earnings within 14 days
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS days_until_earnings INTEGER;        -- Days until next earnings
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS earnings_quality_score INTEGER;     -- Overall earnings quality (0-100)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS passes_earnings BOOLEAN;            -- Passes Minervini earnings criteria
+
 -- Indices for new columns
 CREATE INDEX IF NOT EXISTS idx_avg_dollar_volume ON minervini_metrics(avg_dollar_volume DESC);
 CREATE INDEX IF NOT EXISTS idx_industry_rs ON minervini_metrics(industry_rs DESC);
 CREATE INDEX IF NOT EXISTS idx_is_52w_high ON minervini_metrics(is_52w_high);
+CREATE INDEX IF NOT EXISTS idx_eps_growth_yoy ON minervini_metrics(eps_growth_yoy DESC);
+CREATE INDEX IF NOT EXISTS idx_earnings_quality ON minervini_metrics(earnings_quality_score DESC);
+CREATE INDEX IF NOT EXISTS idx_passes_earnings ON minervini_metrics(passes_earnings);
+CREATE INDEX IF NOT EXISTS idx_upcoming_earnings ON minervini_metrics(has_upcoming_earnings);
 
 -- Sector performance tracking table (aggregated from individual stocks)
 CREATE TABLE IF NOT EXISTS sector_performance (
@@ -178,3 +306,18 @@ CREATE TABLE IF NOT EXISTS sector_performance (
 
 CREATE INDEX IF NOT EXISTS idx_sector_perf_date ON sector_performance(date);
 CREATE INDEX IF NOT EXISTS idx_sector_perf_rs ON sector_performance(sector_rs DESC);
+
+-- ============================================================================
+-- 2026-02-05: Minervini Criteria Corrections
+-- Added missing criteria columns for proper 8-criterion trend template
+-- ============================================================================
+
+-- 150-day MA trend (slope) - Minervini criterion #3
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS ma_150_trend_20d NUMERIC(10, 4);
+
+-- Percent from 52-week low - Minervini criterion #7 (must be 30%+ above)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS percent_from_52w_low NUMERIC(10, 2);
+
+-- Index for the new columns
+CREATE INDEX IF NOT EXISTS idx_ma_150_trend ON minervini_metrics(ma_150_trend_20d);
+CREATE INDEX IF NOT EXISTS idx_pct_from_52w_low ON minervini_metrics(percent_from_52w_low DESC);

@@ -36,6 +36,8 @@ class MinerviniMetrics(models.Model):
     week_52_high = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     week_52_low = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     percent_from_52w_high = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    percent_from_52w_low = models.DecimalField(max_digits=10, decimal_places=2, null=True)  # NEW: for 30% above low criterion
+    ma_150_trend_20d = models.DecimalField(max_digits=10, decimal_places=4, null=True)  # NEW: 150-day MA trend
     ma_200_trend_20d = models.DecimalField(max_digits=10, decimal_places=4, null=True)
     relative_strength = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     stage = models.IntegerField(null=True)
@@ -63,6 +65,18 @@ class MinerviniMetrics(models.Model):
     is_52w_high = models.BooleanField(default=False)
     days_since_52w_high = models.IntegerField(null=True)
     industry_rs = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    
+    # Earnings/Fundamental metrics
+    eps_growth_yoy = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    eps_growth_qoq = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    revenue_growth_yoy = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    earnings_acceleration = models.BooleanField(null=True)
+    avg_eps_surprise = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    earnings_beat_rate = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    has_upcoming_earnings = models.BooleanField(null=True)
+    days_until_earnings = models.IntegerField(null=True)
+    earnings_quality_score = models.IntegerField(null=True)
+    passes_earnings = models.BooleanField(null=True)
 
     class Meta:
         db_table = 'minervini_metrics'
