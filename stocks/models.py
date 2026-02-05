@@ -50,6 +50,19 @@ class MinerviniMetrics(models.Model):
     latest_contraction_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)
     volume_contraction = models.BooleanField(default=False)
     pivot_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    
+    # Enhanced metrics
+    avg_dollar_volume = models.BigIntegerField(null=True)
+    volume_ratio = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    return_1m = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    return_3m = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    return_6m = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    return_12m = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    atr_14 = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    atr_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    is_52w_high = models.BooleanField(default=False)
+    days_since_52w_high = models.IntegerField(null=True)
+    industry_rs = models.DecimalField(max_digits=10, decimal_places=2, null=True)
 
     class Meta:
         db_table = 'minervini_metrics'
@@ -93,6 +106,74 @@ class MinerviniMetrics(models.Model):
             return "Average"
         else:
             return "Weak"
+    
+    @property
+    def avg_dollar_volume_formatted(self):
+        """Format average dollar volume in millions"""
+        if not self.avg_dollar_volume:
+            return "N/A"
+        return f"${self.avg_dollar_volume / 1_000_000:.1f}M"
+    
+    @property
+    def volume_status(self):
+        """Volume ratio status indicator"""
+        if not self.volume_ratio:
+            return "N/A"
+        ratio = float(self.volume_ratio)
+        if ratio >= 1.5:
+            return "High"
+        elif ratio >= 1.0:
+            return "Above Avg"
+        elif ratio >= 0.7:
+            return "Normal"
+        else:
+            return "Low"
+    
+    @property
+    def momentum_trend(self):
+        """Overall momentum trend based on multi-timeframe returns"""
+        returns = [self.return_1m, self.return_3m, self.return_6m, self.return_12m]
+        valid_returns = [float(r) for r in returns if r is not None]
+        
+        if not valid_returns:
+            return "N/A"
+        
+        positive_count = sum(1 for r in valid_returns if r > 0)
+        
+        if positive_count == len(valid_returns):
+            return "Strong Up"
+        elif positive_count >= len(valid_returns) * 0.75:
+            return "Up"
+        elif positive_count >= len(valid_returns) * 0.5:
+            return "Mixed"
+        else:
+            return "Down"
+    
+    @property
+    def volatility_rating(self):
+        """Volatility rating based on ATR percentage"""
+        if not self.atr_percent:
+            return "N/A"
+        atr = float(self.atr_percent)
+        if atr >= 5:
+            return "High"
+        elif atr >= 3:
+            return "Medium"
+        else:
+            return "Low"
+    
+    @property
+    def industry_rs_rating(self):
+        """Industry relative strength rating"""
+        if not self.industry_rs:
+            return "N/A"
+        ind_rs = float(self.industry_rs)
+        if ind_rs >= 70:
+            return "Leading"
+        elif ind_rs >= 50:
+            return "Average"
+        else:
+            return "Lagging"
 
 
 class AIAnalysis(models.Model):
@@ -148,3 +229,95 @@ class Watchlist(models.Model):
     
     def __str__(self):
         return f"{self.symbol} (added {self.added_at.strftime('%Y-%m-%d')})"
+
+
+class SectorPerformance(models.Model):
+    """Model for sector/industry performance tracking"""
+    
+    date = models.DateField()
+    sic_code = models.CharField(max_length=10)
+    sic_description = models.CharField(max_length=255, null=True, blank=True)
+    sector_return_90d = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    sector_rs = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    stock_count = models.IntegerField(null=True)
+    
+    class Meta:
+        db_table = 'sector_performance'
+        managed = False
+        ordering = ['-sector_rs']
+        verbose_name = 'Sector Performance'
+        verbose_name_plural = 'Sector Performance'
+        unique_together = [['date', 'sic_code']]
+    
+    def __str__(self):
+        return f"{self.sic_description or self.sic_code} - {self.date}"
+    
+    @property
+    def sector_strength(self):
+        """Sector strength rating"""
+        if not self.sector_rs:
+            return "N/A"
+        rs = float(self.sector_rs)
+        if rs >= 70:
+            return "Leading"
+        elif rs >= 50:
+            return "Average"
+        else:
+            return "Lagging"
+
+
+class TickerDetails(models.Model):
+    """Model for detailed ticker information from Massive API"""
+    
+    symbol = models.CharField(max_length=20, primary_key=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
+    description = models.TextField(null=True, blank=True)
+    market_cap = models.BigIntegerField(null=True, blank=True)
+    homepage_url = models.CharField(max_length=500, null=True, blank=True)
+    logo_url = models.CharField(max_length=500, null=True, blank=True)
+    icon_url = models.CharField(max_length=500, null=True, blank=True)
+    primary_exchange = models.CharField(max_length=20, null=True, blank=True)
+    locale = models.CharField(max_length=10, null=True, blank=True)
+    market = models.CharField(max_length=50, null=True, blank=True)
+    currency_name = models.CharField(max_length=10, null=True, blank=True)
+    active = models.BooleanField(null=True, blank=True)
+    list_date = models.DateField(null=True, blank=True)
+    sic_code = models.CharField(max_length=10, null=True, blank=True)
+    sic_description = models.CharField(max_length=255, null=True, blank=True)
+    total_employees = models.IntegerField(null=True, blank=True)
+    share_class_shares_outstanding = models.BigIntegerField(null=True, blank=True)
+    weighted_shares_outstanding = models.BigIntegerField(null=True, blank=True)
+    cik = models.CharField(max_length=20, null=True, blank=True)
+    composite_figi = models.CharField(max_length=20, null=True, blank=True)
+    share_class_figi = models.CharField(max_length=20, null=True, blank=True)
+    phone_number = models.CharField(max_length=50, null=True, blank=True)
+    ticker_type = models.CharField(max_length=10, null=True, blank=True, db_column='ticker_type')
+    round_lot = models.IntegerField(null=True, blank=True)
+    address_line1 = models.CharField(max_length=255, null=True, blank=True)
+    address_city = models.CharField(max_length=100, null=True, blank=True)
+    address_state = models.CharField(max_length=50, null=True, blank=True)
+    address_postal_code = models.CharField(max_length=20, null=True, blank=True)
+    updated_at = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        db_table = 'ticker_details'
+        managed = False  # Don't let Django manage this table
+        ordering = ['-market_cap']
+        verbose_name = 'Ticker Detail'
+        verbose_name_plural = 'Ticker Details'
+    
+    def __str__(self):
+        return f"{self.symbol} - {self.name or 'Unknown'}"
+    
+    @property
+    def market_cap_formatted(self):
+        """Format market cap in billions or millions"""
+        if not self.market_cap:
+            return "N/A"
+        
+        if self.market_cap >= 1_000_000_000:
+            return f"${self.market_cap / 1_000_000_000:.2f}B"
+        elif self.market_cap >= 1_000_000:
+            return f"${self.market_cap / 1_000_000:.2f}M"
+        else:
+            return f"${self.market_cap:,.0f}"

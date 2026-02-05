@@ -9,6 +9,7 @@ urlpatterns = [
     path('stocks/<str:symbol>/', views.stock_detail_view, name='stock_detail'),
     path('watchlist/', views.watchlist_view, name='watchlist'),
     path('api/search/', views.search_stocks, name='search_stocks'),
+    path('api/proxy-image/', views.proxy_company_image, name='proxy_company_image'),
     path('api/analyze/<str:symbol>/', views.analyze_stock_ai, name='analyze_stock_ai'),
     path('api/watchlist/add/<str:symbol>/', views.add_to_watchlist, name='add_to_watchlist'),
     path('api/watchlist/remove/<str:symbol>/', views.remove_from_watchlist, name='remove_from_watchlist'),

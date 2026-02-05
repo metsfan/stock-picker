@@ -94,3 +94,87 @@ CREATE TABLE IF NOT EXISTS watchlist (
 -- Index for watchlist queries
 CREATE INDEX IF NOT EXISTS idx_watchlist_symbol ON watchlist(symbol);
 CREATE INDEX IF NOT EXISTS idx_watchlist_added_at ON watchlist(added_at DESC);
+
+-- 2026-02-05: Add Ticker Details table (from Massive API)
+CREATE TABLE IF NOT EXISTS ticker_details (
+    symbol VARCHAR(20) PRIMARY KEY,
+    name VARCHAR(255),
+    description TEXT,
+    market_cap BIGINT,
+    homepage_url VARCHAR(500),
+    logo_url VARCHAR(500),
+    icon_url VARCHAR(500),
+    primary_exchange VARCHAR(20),
+    locale VARCHAR(10),
+    market VARCHAR(50),
+    currency_name VARCHAR(10),
+    active BOOLEAN,
+    list_date DATE,
+    sic_code VARCHAR(10),
+    sic_description VARCHAR(255),
+    total_employees INTEGER,
+    share_class_shares_outstanding BIGINT,
+    weighted_shares_outstanding BIGINT,
+    cik VARCHAR(20),
+    composite_figi VARCHAR(20),
+    share_class_figi VARCHAR(20),
+    phone_number VARCHAR(50),
+    ticker_type VARCHAR(10),
+    round_lot INTEGER,
+    address_line1 VARCHAR(255),
+    address_city VARCHAR(100),
+    address_state VARCHAR(50),
+    address_postal_code VARCHAR(20),
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for ticker details queries
+CREATE INDEX IF NOT EXISTS idx_ticker_details_symbol ON ticker_details(symbol);
+CREATE INDEX IF NOT EXISTS idx_ticker_details_market_cap ON ticker_details(market_cap DESC);
+CREATE INDEX IF NOT EXISTS idx_ticker_details_active ON ticker_details(active);
+CREATE INDEX IF NOT EXISTS idx_ticker_details_updated_at ON ticker_details(updated_at DESC);
+
+-- ============================================================================
+-- 2026-02-05: Enhanced Minervini Metrics
+-- Additional technical indicators calculated from existing price/volume data
+-- ============================================================================
+
+-- Liquidity metrics
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS avg_dollar_volume BIGINT;  -- 50-day avg dollar volume
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS volume_ratio NUMERIC(5, 2);  -- Today's volume vs 50-day avg
+
+-- Multi-timeframe momentum (percentage returns)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS return_1m NUMERIC(10, 2);   -- 1-month return %
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS return_3m NUMERIC(10, 2);   -- 3-month return %
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS return_6m NUMERIC(10, 2);   -- 6-month return %
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS return_12m NUMERIC(10, 2);  -- 12-month return %
+
+-- Volatility metrics
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS atr_14 NUMERIC(10, 2);      -- 14-day Average True Range
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS atr_percent NUMERIC(5, 2);  -- ATR as % of price (volatility)
+
+-- New high tracking
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS is_52w_high BOOLEAN DEFAULT FALSE;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS days_since_52w_high INTEGER;
+
+-- Industry/Sector relative strength
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS industry_rs NUMERIC(10, 2);  -- Industry group RS score
+
+-- Indices for new columns
+CREATE INDEX IF NOT EXISTS idx_avg_dollar_volume ON minervini_metrics(avg_dollar_volume DESC);
+CREATE INDEX IF NOT EXISTS idx_industry_rs ON minervini_metrics(industry_rs DESC);
+CREATE INDEX IF NOT EXISTS idx_is_52w_high ON minervini_metrics(is_52w_high);
+
+-- Sector performance tracking table (aggregated from individual stocks)
+CREATE TABLE IF NOT EXISTS sector_performance (
+    date DATE NOT NULL,
+    sic_code VARCHAR(10) NOT NULL,
+    sic_description VARCHAR(255),
+    sector_return_90d NUMERIC(10, 2),  -- 90-day sector return
+    sector_rs NUMERIC(10, 2),          -- Sector relative strength vs market
+    stock_count INTEGER,               -- Number of stocks in sector
+    PRIMARY KEY (date, sic_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sector_perf_date ON sector_performance(date);
+CREATE INDEX IF NOT EXISTS idx_sector_perf_rs ON sector_performance(sector_rs DESC);

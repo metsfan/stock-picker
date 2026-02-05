@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Minervini Stock Analyzer
+Minervini Stock Analyzer (Enhanced with Company Fundamentals)
 
 Analyzes stocks based on Mark Minervini's trend template criteria:
 1. Stock price > 150-day MA and 200-day MA
@@ -10,6 +10,18 @@ Analyzes stocks based on Mark Minervini's trend template criteria:
 5. Stock price > 50-day MA
 6. Stock price within 25% of 52-week high
 7. Relative Strength (RS) rating >= 70
+
+ENHANCED FEATURES (using ticker_details table):
+- Market Cap Filtering: Automatically excludes stocks < $100M (too illiquid)
+- Liquidity Scoring: Classifies stocks by market cap tier (Micro/Small/Mid/Large/Mega)
+- Institutional Quality: Flags stocks with sufficient size for institutional investment
+- Active Stock Filter: Excludes delisted/inactive stocks
+- Quality Adjustment: Applies stricter RS requirements for lower quality stocks
+
+Minervini Market Cap Philosophy:
+- Avoids micro caps (<$300M) due to liquidity and manipulation concerns
+- Sweet spot: $300M - $50B (growth potential + liquidity)
+- Prefers stocks with institutional sponsorship
 
 Stage Analysis:
 Each stock is classified into one of four market stages based on Minervini's methodology:
@@ -37,7 +49,7 @@ Stage 4 - Declining/Markdown:
     - 200-day MA trending down significantly
     - Far from 52-week high, weak relative strength
 
-This script processes daily stock data and stores metrics in SQLite for trend analysis.
+This script processes daily stock data and stores metrics in PostgreSQL for trend analysis.
 """
 
 import psycopg2
@@ -105,6 +117,64 @@ class MinerviniAnalyzer:
         cursor.close()
         return count > 0
     
+    def get_ticker_details(self, symbol):
+        """
+        Get ticker details from ticker_details table.
+        Returns dict with company fundamentals or None if not found.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT symbol, name, market_cap, active, total_employees,
+                   primary_exchange, sic_description, list_date
+            FROM ticker_details
+            WHERE symbol = %s
+        """, (symbol,))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        
+        if not result:
+            return None
+        
+        return {
+            'symbol': result[0],
+            'name': result[1],
+            'market_cap': result[2],
+            'active': result[3],
+            'total_employees': result[4],
+            'primary_exchange': result[5],
+            'industry': result[6],
+            'list_date': result[7]
+        }
+    
+    def classify_market_cap_tier(self, market_cap):
+        """
+        Classify stock by market cap tier following Minervini principles.
+        
+        Returns:
+            tuple: (tier_name, liquidity_score, institutional_quality)
+            
+        Minervini typically focuses on stocks with sufficient liquidity:
+        - Micro caps (<$300M): Too risky, prone to manipulation
+        - Small caps ($300M-$2B): Good for aggressive growth
+        - Mid caps ($2B-$10B): Sweet spot - growth potential + liquidity
+        - Large caps ($10B-$200B): Stable, institutional favorites
+        - Mega caps (>$200B): Slower growth, but very stable
+        """
+        if market_cap is None:
+            return ('Unknown', 0, False)
+        
+        if market_cap < 300_000_000:  # < $300M
+            return ('Micro Cap', 2, False)
+        elif market_cap < 2_000_000_000:  # $300M - $2B
+            return ('Small Cap', 6, True)
+        elif market_cap < 10_000_000_000:  # $2B - $10B
+            return ('Mid Cap', 9, True)
+        elif market_cap < 200_000_000_000:  # $10B - $200B
+            return ('Large Cap', 8, True)
+        else:  # > $200B
+            return ('Mega Cap', 7, True)
+    
     def calculate_moving_average(self, symbol, end_date, days):
         """Calculate moving average for a symbol over specified days."""
         cursor = self.conn.cursor()
@@ -116,6 +186,7 @@ class MinerviniAnalyzer:
         """, (symbol, end_date, days))
         
         prices = [float(row[0]) for row in cursor.fetchall()]
+        cursor.close()
         
         if len(prices) < days:
             return None
@@ -136,6 +207,7 @@ class MinerviniAnalyzer:
         """, (symbol, start_date, end_date))
         
         result = cursor.fetchone()
+        cursor.close()
         return (float(result[0]) if result[0] is not None else None,
                 float(result[1]) if result[1] is not None else None)
     
@@ -144,8 +216,6 @@ class MinerviniAnalyzer:
         Calculate the trend of 200-day MA over the last 20 days.
         Returns the change in MA over this period.
         """
-        cursor = self.conn.cursor()
-        
         # Get 200-day MA for 20 days ago
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
         date_20d_ago = (end_date_obj - timedelta(days=20)).strftime("%Y-%m-%d")
@@ -249,6 +319,371 @@ class MinerviniAnalyzer:
         cursor.close()
         return max(0, min(100, rs_score))
     
+    def calculate_avg_dollar_volume(self, symbol, end_date, days=50):
+        """
+        Calculate average daily dollar volume over specified days.
+        Dollar volume = close price * volume
+        
+        Minervini typically looks for $20M+ daily dollar volume for institutional tradability.
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date string
+            days: Number of days to average (default 50)
+            
+        Returns:
+            int: Average dollar volume or None if insufficient data
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT close, volume FROM stock_prices
+            WHERE symbol = %s AND date <= %s
+            ORDER BY date DESC
+            LIMIT %s
+        """, (symbol, end_date, days))
+        
+        rows = cursor.fetchall()
+        cursor.close()
+        
+        if len(rows) < days // 2:  # Need at least half the days
+            return None
+        
+        dollar_volumes = [float(row[0]) * int(row[1]) for row in rows]
+        return int(sum(dollar_volumes) / len(dollar_volumes))
+    
+    def calculate_volume_ratio(self, symbol, date, avg_days=50):
+        """
+        Calculate today's volume relative to average volume.
+        
+        A ratio > 1.5 indicates unusually high volume (potential breakout).
+        A ratio < 0.5 indicates unusually low volume (consolidation).
+        
+        Args:
+            symbol: Stock symbol
+            date: Date to analyze
+            avg_days: Days for average calculation
+            
+        Returns:
+            float: Volume ratio or None if insufficient data
+        """
+        cursor = self.conn.cursor()
+        
+        # Get today's volume
+        cursor.execute("""
+            SELECT volume FROM stock_prices
+            WHERE symbol = %s AND date = %s
+        """, (symbol, date))
+        
+        result = cursor.fetchone()
+        if not result or result[0] is None:
+            cursor.close()
+            return None
+        
+        today_volume = int(result[0])
+        
+        # Get average volume (excluding today)
+        cursor.execute("""
+            SELECT AVG(volume) FROM (
+                SELECT volume FROM stock_prices
+                WHERE symbol = %s AND date < %s
+                ORDER BY date DESC
+                LIMIT %s
+            ) subq
+        """, (symbol, date, avg_days))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        
+        if not result or result[0] is None or float(result[0]) == 0:
+            return None
+        
+        avg_volume = float(result[0])
+        return round(today_volume / avg_volume, 2)
+    
+    def calculate_returns(self, symbol, end_date):
+        """
+        Calculate multi-timeframe returns (1m, 3m, 6m, 12m).
+        
+        IBD-style momentum analysis uses weighted returns across timeframes.
+        Strong stocks show positive returns across all timeframes.
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date to calculate returns from
+            
+        Returns:
+            dict: Returns for each timeframe or None values if insufficient data
+        """
+        cursor = self.conn.cursor()
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        
+        # Get current price
+        cursor.execute("""
+            SELECT close FROM stock_prices
+            WHERE symbol = %s AND date = %s
+        """, (symbol, end_date))
+        
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            return {'return_1m': None, 'return_3m': None, 'return_6m': None, 'return_12m': None}
+        
+        current_price = float(result[0])
+        
+        returns = {}
+        timeframes = {
+            'return_1m': 21,    # ~1 month of trading days
+            'return_3m': 63,    # ~3 months
+            'return_6m': 126,   # ~6 months
+            'return_12m': 252   # ~12 months
+        }
+        
+        for key, days in timeframes.items():
+            start_date = (end_date_obj - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
+            
+            cursor.execute("""
+                SELECT close FROM stock_prices
+                WHERE symbol = %s AND date >= %s AND date < %s
+                ORDER BY date ASC
+                LIMIT 1
+            """, (symbol, start_date, end_date))
+            
+            result = cursor.fetchone()
+            if result and result[0]:
+                past_price = float(result[0])
+                returns[key] = round(((current_price - past_price) / past_price) * 100, 2)
+            else:
+                returns[key] = None
+        
+        cursor.close()
+        return returns
+    
+    def calculate_atr(self, symbol, end_date, period=14):
+        """
+        Calculate Average True Range (ATR) - a volatility indicator.
+        
+        True Range = max(high-low, abs(high-prev_close), abs(low-prev_close))
+        ATR = Average of True Range over period
+        
+        Used for:
+        - Position sizing (smaller positions for volatile stocks)
+        - Stop-loss placement (typically 1.5-2x ATR below entry)
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date to calculate ATR for
+            period: ATR period (default 14 days)
+            
+        Returns:
+            tuple: (atr_value, atr_percent) or (None, None)
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT high, low, close FROM stock_prices
+            WHERE symbol = %s AND date <= %s
+            ORDER BY date DESC
+            LIMIT %s
+        """, (symbol, end_date, period + 1))
+        
+        rows = cursor.fetchall()
+        cursor.close()
+        
+        if len(rows) < period + 1:
+            return None, None
+        
+        # Rows are in descending order, reverse for calculation
+        rows = list(reversed(rows))
+        
+        true_ranges = []
+        for i in range(1, len(rows)):
+            high = float(rows[i][0])
+            low = float(rows[i][1])
+            prev_close = float(rows[i-1][2])
+            
+            tr = max(
+                high - low,
+                abs(high - prev_close),
+                abs(low - prev_close)
+            )
+            true_ranges.append(tr)
+        
+        if not true_ranges:
+            return None, None
+        
+        atr = sum(true_ranges) / len(true_ranges)
+        current_price = float(rows[-1][2])
+        atr_percent = (atr / current_price) * 100
+        
+        return round(atr, 2), round(atr_percent, 2)
+    
+    def calculate_new_high_metrics(self, symbol, end_date):
+        """
+        Calculate metrics related to 52-week highs.
+        
+        Stocks making new highs tend to continue making new highs.
+        Days since high helps identify stocks breaking out vs extended.
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date to analyze
+            
+        Returns:
+            tuple: (is_52w_high, days_since_52w_high)
+        """
+        cursor = self.conn.cursor()
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        start_date = (end_date_obj - timedelta(weeks=52)).strftime("%Y-%m-%d")
+        
+        # Get today's high and 52-week high with its date
+        cursor.execute("""
+            SELECT date, high FROM stock_prices
+            WHERE symbol = %s AND date BETWEEN %s AND %s
+            ORDER BY high DESC
+            LIMIT 1
+        """, (symbol, start_date, end_date))
+        
+        high_result = cursor.fetchone()
+        
+        cursor.execute("""
+            SELECT high FROM stock_prices
+            WHERE symbol = %s AND date = %s
+        """, (symbol, end_date))
+        
+        today_result = cursor.fetchone()
+        cursor.close()
+        
+        if not high_result or not today_result:
+            return False, None
+        
+        high_date = high_result[0]
+        week_52_high = float(high_result[1])
+        today_high = float(today_result[0])
+        
+        # Is today a new 52-week high? (within 0.5% tolerance)
+        is_52w_high = today_high >= week_52_high * 0.995
+        
+        # Days since 52-week high
+        if isinstance(high_date, str):
+            high_date_obj = datetime.strptime(high_date, "%Y-%m-%d")
+        else:
+            high_date_obj = datetime.combine(high_date, datetime.min.time())
+        
+        days_since = (end_date_obj - high_date_obj).days
+        
+        return is_52w_high, days_since
+    
+    def calculate_sector_performance(self, date):
+        """
+        Calculate and store sector performance for all SIC codes.
+        This creates the sector_performance table data for the given date.
+        
+        Should be called once per date before analyzing individual stocks.
+        
+        Args:
+            date: Date to calculate sector performance for
+        """
+        cursor = self.conn.cursor()
+        
+        # Get market performance for comparison
+        market_perf = self.get_market_performance(date)
+        
+        end_date_obj = datetime.strptime(date, "%Y-%m-%d")
+        start_date = (end_date_obj - timedelta(days=90)).strftime("%Y-%m-%d")
+        
+        # Get all unique SIC codes with their descriptions
+        cursor.execute("""
+            SELECT DISTINCT td.sic_code, td.sic_description
+            FROM ticker_details td
+            WHERE td.sic_code IS NOT NULL AND td.sic_code != ''
+        """)
+        
+        sic_codes = cursor.fetchall()
+        
+        for sic_code, sic_description in sic_codes:
+            # Calculate average 90-day return for stocks in this sector
+            cursor.execute("""
+                WITH sector_stocks AS (
+                    SELECT sp.symbol,
+                           FIRST_VALUE(sp.close) OVER (PARTITION BY sp.symbol ORDER BY sp.date ASC) as start_price,
+                           LAST_VALUE(sp.close) OVER (PARTITION BY sp.symbol ORDER BY sp.date ASC 
+                               ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) as end_price
+                    FROM stock_prices sp
+                    JOIN ticker_details td ON sp.symbol = td.symbol
+                    WHERE td.sic_code = %s
+                    AND sp.date BETWEEN %s AND %s
+                )
+                SELECT AVG((end_price - start_price) / NULLIF(start_price, 0) * 100) as avg_return,
+                       COUNT(DISTINCT symbol) as stock_count
+                FROM sector_stocks
+            """, (sic_code, start_date, date))
+            
+            result = cursor.fetchone()
+            
+            if result and result[0] is not None:
+                sector_return = float(result[0])
+                stock_count = result[1]
+                
+                # Calculate sector RS vs market (0-100 scale, 50 = market average)
+                if sector_return > market_perf:
+                    sector_rs = 50 + min(50, (sector_return - market_perf) * 2)
+                else:
+                    sector_rs = 50 - min(50, (market_perf - sector_return) * 2)
+                
+                sector_rs = max(0, min(100, sector_rs))
+                
+                # Upsert sector performance
+                cursor.execute("""
+                    INSERT INTO sector_performance (date, sic_code, sic_description, sector_return_90d, sector_rs, stock_count)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (date, sic_code) DO UPDATE SET
+                        sic_description = EXCLUDED.sic_description,
+                        sector_return_90d = EXCLUDED.sector_return_90d,
+                        sector_rs = EXCLUDED.sector_rs,
+                        stock_count = EXCLUDED.stock_count
+                """, (date, sic_code, sic_description, round(sector_return, 2), round(sector_rs, 2), stock_count))
+        
+        self.conn.commit()
+        cursor.close()
+    
+    def get_industry_rs(self, symbol, date):
+        """
+        Get the industry/sector relative strength for a stock.
+        
+        Args:
+            symbol: Stock symbol
+            date: Date to get sector RS for
+            
+        Returns:
+            float: Sector RS score (0-100) or None
+        """
+        cursor = self.conn.cursor()
+        
+        # Get the stock's SIC code
+        cursor.execute("""
+            SELECT td.sic_code FROM ticker_details td
+            WHERE td.symbol = %s
+        """, (symbol,))
+        
+        result = cursor.fetchone()
+        if not result or not result[0]:
+            cursor.close()
+            return None
+        
+        sic_code = result[0]
+        
+        # Get sector RS
+        cursor.execute("""
+            SELECT sector_rs FROM sector_performance
+            WHERE date = %s AND sic_code = %s
+        """, (date, sic_code))
+        
+        result = cursor.fetchone()
+        cursor.close()
+        
+        if result:
+            return float(result[0])
+        return None
+
     def detect_vcp(self, symbol, end_date, lookback_days=120):
         """
         Detect Volatility Contraction Pattern (VCP).
@@ -507,9 +942,23 @@ class MinerviniAnalyzer:
     def evaluate_minervini_criteria(self, symbol, date):
         """
         Evaluate a stock against Minervini's trend template.
-        Returns metrics and pass/fail status.
+        Returns metrics and pass/fail status, enhanced with ticker fundamentals.
         """
         cursor = self.conn.cursor()
+        
+        # Get ticker details for fundamental context
+        ticker_details = self.get_ticker_details(symbol)
+        
+        # Apply Minervini-style filters based on fundamentals
+        if ticker_details:
+            # Filter 1: Inactive stocks
+            if ticker_details['active'] is False:
+                return None  # Skip inactive stocks
+            
+            # Filter 2: Extremely small market caps (< $100M)
+            # Minervini avoids these due to liquidity concerns
+            if ticker_details['market_cap'] and ticker_details['market_cap'] < 100_000_000:
+                return None  # Too small, prone to manipulation
         
         # Get current price
         cursor.execute("""
@@ -518,6 +967,8 @@ class MinerviniAnalyzer:
         """, (symbol, date))
         
         result = cursor.fetchone()
+        cursor.close()
+        
         if not result:
             return None
         
@@ -533,6 +984,14 @@ class MinerviniAnalyzer:
         
         # Detect VCP pattern
         vcp_data = self.detect_vcp(symbol, date)
+        
+        # Calculate enhanced metrics
+        avg_dollar_volume = self.calculate_avg_dollar_volume(symbol, date)
+        volume_ratio = self.calculate_volume_ratio(symbol, date)
+        returns = self.calculate_returns(symbol, date)
+        atr_14, atr_percent = self.calculate_atr(symbol, date)
+        is_52w_high, days_since_52w_high = self.calculate_new_high_metrics(symbol, date)
+        industry_rs = self.get_industry_rs(symbol, date)
         
         # Check if we have enough data
         if None in [ma_50, ma_150, ma_200, week_52_high]:
@@ -566,6 +1025,24 @@ class MinerviniAnalyzer:
             ma_200_trend, percent_from_52w_high, relative_strength
         )
         
+        # Apply market cap context to analysis
+        market_cap_tier = 'Unknown'
+        liquidity_score = 0
+        institutional_quality = False
+        
+        if ticker_details and ticker_details['market_cap']:
+            market_cap_tier, liquidity_score, institutional_quality = \
+                self.classify_market_cap_tier(ticker_details['market_cap'])
+            
+            # Adjust passing criteria based on liquidity/quality
+            # Minervini prefers stocks with institutional backing
+            if relative_strength is not None:
+                if not institutional_quality:
+                    # Micro caps ($100M-$300M) need higher RS to compensate for liquidity risk
+                    # Effectively raises the bar for these riskier stocks
+                    if relative_strength < 80:
+                        passes_all = False
+        
         metrics = {
             'symbol': symbol,
             'date': date,
@@ -588,7 +1065,23 @@ class MinerviniAnalyzer:
             'contraction_count': vcp_data['contraction_count'],
             'latest_contraction_pct': vcp_data['latest_contraction_pct'],
             'volume_contraction': vcp_data['volume_contraction'],
-            'pivot_price': vcp_data['pivot_price']
+            'pivot_price': vcp_data['pivot_price'],
+            # Enhanced metrics (new)
+            'avg_dollar_volume': avg_dollar_volume,
+            'volume_ratio': volume_ratio,
+            'return_1m': returns['return_1m'],
+            'return_3m': returns['return_3m'],
+            'return_6m': returns['return_6m'],
+            'return_12m': returns['return_12m'],
+            'atr_14': atr_14,
+            'atr_percent': atr_percent,
+            'is_52w_high': is_52w_high,
+            'days_since_52w_high': days_since_52w_high,
+            'industry_rs': industry_rs,
+            # Ticker context (for logging/debugging)
+            '_market_cap_tier': market_cap_tier,
+            '_liquidity_score': liquidity_score,
+            '_institutional_quality': institutional_quality
         }
         
         return metrics
@@ -604,8 +1097,12 @@ class MinerviniAnalyzer:
              ma_200_trend_20d, relative_strength, stage, passes_minervini,
              criteria_passed, criteria_failed,
              vcp_detected, vcp_score, contraction_count, latest_contraction_pct,
-             volume_contraction, pivot_price)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             volume_contraction, pivot_price,
+             avg_dollar_volume, volume_ratio,
+             return_1m, return_3m, return_6m, return_12m,
+             atr_14, atr_percent,
+             is_52w_high, days_since_52w_high, industry_rs)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -626,7 +1123,18 @@ class MinerviniAnalyzer:
                 contraction_count = EXCLUDED.contraction_count,
                 latest_contraction_pct = EXCLUDED.latest_contraction_pct,
                 volume_contraction = EXCLUDED.volume_contraction,
-                pivot_price = EXCLUDED.pivot_price
+                pivot_price = EXCLUDED.pivot_price,
+                avg_dollar_volume = EXCLUDED.avg_dollar_volume,
+                volume_ratio = EXCLUDED.volume_ratio,
+                return_1m = EXCLUDED.return_1m,
+                return_3m = EXCLUDED.return_3m,
+                return_6m = EXCLUDED.return_6m,
+                return_12m = EXCLUDED.return_12m,
+                atr_14 = EXCLUDED.atr_14,
+                atr_percent = EXCLUDED.atr_percent,
+                is_52w_high = EXCLUDED.is_52w_high,
+                days_since_52w_high = EXCLUDED.days_since_52w_high,
+                industry_rs = EXCLUDED.industry_rs
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -648,10 +1156,22 @@ class MinerviniAnalyzer:
             metrics['contraction_count'],
             metrics['latest_contraction_pct'],
             metrics['volume_contraction'],
-            metrics['pivot_price']
+            metrics['pivot_price'],
+            metrics['avg_dollar_volume'],
+            metrics['volume_ratio'],
+            metrics['return_1m'],
+            metrics['return_3m'],
+            metrics['return_6m'],
+            metrics['return_12m'],
+            metrics['atr_14'],
+            metrics['atr_percent'],
+            metrics['is_52w_high'],
+            metrics['days_since_52w_high'],
+            metrics['industry_rs']
         ))
         
         self.conn.commit()
+        cursor.close()
     
     def analyze_date(self, date):
         """Analyze all stocks for a given date."""
@@ -673,6 +1193,10 @@ class MinerviniAnalyzer:
         benchmark_list = ', '.join([f"{sym}({w*100:.0f}%)" for sym, w in self.market_benchmarks.items()])
         print(f"Market performance (90-day): {market_perf:+.2f}% (weighted: {benchmark_list})")
         
+        # Pre-calculate sector performance for industry RS
+        print("Calculating sector performance...")
+        self.calculate_sector_performance(date)
+        
         analyzed = 0
         passed = 0
         skipped = 0
@@ -690,7 +1214,15 @@ class MinerviniAnalyzer:
                         vcp_info = ""
                         if metrics['vcp_detected']:
                             vcp_info = f" [VCP Score: {metrics['vcp_score']:.0f}]"
-                        print(f"  ✓ {symbol}: PASSED - Stage {metrics['stage']} ({metrics['criteria_passed']}/9 criteria){vcp_info}")
+                        
+                        # Add market cap context if available
+                        cap_info = ""
+                        if metrics.get('_market_cap_tier') and metrics['_market_cap_tier'] != 'Unknown':
+                            tier = metrics['_market_cap_tier']
+                            quality = "⭐" if metrics.get('_institutional_quality') else ""
+                            cap_info = f" [{tier}{quality}]"
+                        
+                        print(f"  ✓ {symbol}: PASSED - Stage {metrics['stage']} ({metrics['criteria_passed']}/9 criteria){vcp_info}{cap_info}")
                 else:
                     skipped += 1
                 
@@ -702,29 +1234,72 @@ class MinerviniAnalyzer:
                 skipped += 1
                 continue
         
+        # Count stocks by market cap tier (for passed stocks)
+        cursor.execute("""
+            SELECT COUNT(DISTINCT mm.symbol) as count
+            FROM minervini_metrics mm
+            LEFT JOIN ticker_details td ON mm.symbol = td.symbol
+            WHERE mm.date = %s AND mm.passes_minervini = true
+            AND td.market_cap >= 300000000 AND td.market_cap < 2000000000
+        """, (date,))
+        small_cap_count = cursor.fetchone()[0]
+        
+        cursor.execute("""
+            SELECT COUNT(DISTINCT mm.symbol) as count
+            FROM minervini_metrics mm
+            LEFT JOIN ticker_details td ON mm.symbol = td.symbol
+            WHERE mm.date = %s AND mm.passes_minervini = true
+            AND td.market_cap >= 2000000000 AND td.market_cap < 10000000000
+        """, (date,))
+        mid_cap_count = cursor.fetchone()[0]
+        
+        cursor.execute("""
+            SELECT COUNT(DISTINCT mm.symbol) as count
+            FROM minervini_metrics mm
+            LEFT JOIN ticker_details td ON mm.symbol = td.symbol
+            WHERE mm.date = %s AND mm.passes_minervini = true
+            AND td.market_cap >= 10000000000
+        """, (date,))
+        large_cap_count = cursor.fetchone()[0]
+        
         print(f"\nAnalysis Summary:")
         print(f"  Total symbols: {len(symbols)}")
         print(f"  Analyzed: {analyzed}")
         print(f"  Passed Minervini: {passed} ({(passed/analyzed*100) if analyzed else 0:.1f}%)")
-        print(f"  Skipped (insufficient data): {skipped}")
+        print(f"  Skipped (insufficient data/filtered): {skipped}")
         
+        if passed > 0:
+            print(f"\n  Market Cap Distribution (Passing Stocks):")
+            print(f"    Small Cap ($300M-$2B): {small_cap_count}")
+            print(f"    Mid Cap ($2B-$10B): {mid_cap_count}")
+            print(f"    Large Cap+ ($10B+): {large_cap_count}")
+            total_categorized = small_cap_count + mid_cap_count + large_cap_count
+            if total_categorized < passed:
+                print(f"    Unknown/Micro Cap: {passed - total_categorized}")
+        
+        cursor.close()
         return analyzed, passed
     
     def get_top_stocks(self, date, limit=50):
-        """Get top stocks that pass Minervini criteria."""
+        """Get top stocks that pass Minervini criteria with enhanced metrics."""
         cursor = self.conn.cursor()
         
         cursor.execute("""
-            SELECT symbol, close_price, ma_50, ma_150, ma_200,
-                   percent_from_52w_high, relative_strength, stage, criteria_passed,
-                   vcp_detected, vcp_score, pivot_price
-            FROM minervini_metrics
-            WHERE date = %s AND passes_minervini = true
-            ORDER BY relative_strength DESC, criteria_passed DESC
+            SELECT mm.symbol, mm.close_price, mm.relative_strength, mm.stage,
+                   mm.percent_from_52w_high, mm.vcp_detected, mm.vcp_score, mm.pivot_price,
+                   mm.avg_dollar_volume, mm.volume_ratio, mm.industry_rs,
+                   mm.return_1m, mm.return_3m, mm.atr_percent, mm.is_52w_high,
+                   td.market_cap, td.name
+            FROM minervini_metrics mm
+            LEFT JOIN ticker_details td ON mm.symbol = td.symbol
+            WHERE mm.date = %s AND mm.passes_minervini = true
+            ORDER BY mm.relative_strength DESC, mm.industry_rs DESC NULLS LAST
             LIMIT %s
         """, (date, limit))
         
-        return cursor.fetchall()
+        results = cursor.fetchall()
+        cursor.close()
+        return results
     
     def close(self):
         """Close database connection."""
@@ -760,22 +1335,42 @@ def main():
     
     # Show top stocks
     if passed > 0:
-        print("\n" + "=" * 80)
-        print("TOP STOCKS PASSING MINERVINI CRITERIA")
-        print("=" * 80)
+        print("\n" + "=" * 120)
+        print("TOP STOCKS PASSING MINERVINI CRITERIA (Enhanced)")
+        print("=" * 120)
         
         top_stocks = analyzer.get_top_stocks(target_date, limit=20)
         
-        print(f"\n{'Symbol':<10} {'Price':<10} {'MA50':<10} {'MA150':<10} "
-              f"{'MA200':<10} {'%52wH':<8} {'RS':<6} {'Stage':<6} {'VCP':<5} {'Pivot':<10}")
-        print("-" * 100)
+        # Header row
+        print(f"\n{'Symbol':<8} {'Price':>9} {'RS':>5} {'IndRS':>6} {'Stage':>5} "
+              f"{'%52wH':>7} {'1M%':>7} {'3M%':>7} {'$Vol(M)':>9} {'VolR':>5} "
+              f"{'ATR%':>5} {'VCP':>4} {'New Hi':>6}")
+        print("-" * 120)
         
         for stock in top_stocks:
-            symbol, price, ma50, ma150, ma200, pct_high, rs, stage, score, vcp_detected, vcp_score, pivot = stock
+            (symbol, price, rs, stage, pct_high, vcp_detected, vcp_score, pivot,
+             avg_dv, vol_ratio, ind_rs, ret_1m, ret_3m, atr_pct, is_new_high,
+             market_cap, name) = stock
+            
+            # Format values with fallbacks for None
+            rs_str = f"{rs:.0f}" if rs else "-"
+            ind_rs_str = f"{ind_rs:.0f}" if ind_rs else "-"
+            pct_high_str = f"{pct_high:.1f}%" if pct_high else "-"
+            ret_1m_str = f"{ret_1m:+.1f}%" if ret_1m else "-"
+            ret_3m_str = f"{ret_3m:+.1f}%" if ret_3m else "-"
+            avg_dv_str = f"{avg_dv/1_000_000:.1f}" if avg_dv else "-"
+            vol_ratio_str = f"{vol_ratio:.1f}" if vol_ratio else "-"
+            atr_str = f"{atr_pct:.1f}" if atr_pct else "-"
             vcp_str = f"{vcp_score:.0f}" if vcp_detected else "-"
-            pivot_str = f"${pivot:.2f}" if pivot else "-"
-            print(f"{symbol:<10} ${price:<9.2f} ${ma50:<9.2f} ${ma150:<9.2f} "
-                  f"${ma200:<9.2f} {pct_high:<7.1f}% {rs:<5.0f} {stage:<6} {vcp_str:<5} {pivot_str:<10}")
+            new_hi_str = "★" if is_new_high else ""
+            
+            print(f"{symbol:<8} ${price:>8.2f} {rs_str:>5} {ind_rs_str:>6} {stage:>5} "
+                  f"{pct_high_str:>7} {ret_1m_str:>7} {ret_3m_str:>7} {avg_dv_str:>9} {vol_ratio_str:>5} "
+                  f"{atr_str:>5} {vcp_str:>4} {new_hi_str:>6}")
+        
+        print("\n" + "-" * 120)
+        print("Legend: RS=Relative Strength, IndRS=Industry RS, $Vol(M)=Avg Dollar Volume in Millions,")
+        print("        VolR=Volume Ratio (today vs 50d avg), ATR%=Volatility, VCP=VCP Score, ★=New 52w High")
     
     # Close connection
     analyzer.close()

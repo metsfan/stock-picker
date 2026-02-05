@@ -103,7 +103,7 @@
                             <tbody>
                                 {% for stock in top_rs %}
                                 <tr>
-                                    <td><strong>{{ stock.symbol }}</strong></td>
+                                    <td><a href="{% url 'stocks:stock_detail' stock.symbol %}"><strong>{{ stock.symbol }}</strong></a></td>
                                     <td><span class="badge bg-success">{{ stock.relative_strength|floatformat:0 }}</span></td>
                                     <td>{{ stock.stage }}</td>
                                 </tr>
@@ -131,7 +131,7 @@
                             <tbody>
                                 {% for stock in top_vcp %}
                                 <tr>
-                                    <td><strong>{{ stock.symbol }}</strong></td>
+                                    <td><a href="{% url 'stocks:stock_detail' stock.symbol %}"><strong>{{ stock.symbol }}</strong></a></td>
                                     <td><span class="badge bg-info">{{ stock.vcp_score|floatformat:0 }}</span></td>
                                     <td>${{ stock.pivot_price|floatformat:2 }}</td>
                                 </tr>
@@ -159,13 +159,119 @@
                             <tbody>
                                 {% for stock in best_setups %}
                                 <tr>
-                                    <td><strong>{{ stock.symbol }}</strong></td>
+                                    <td><a href="{% url 'stocks:stock_detail' stock.symbol %}"><strong>{{ stock.symbol }}</strong></a></td>
                                     <td><span class="badge bg-success">{{ stock.relative_strength|floatformat:0 }}</span></td>
                                     <td><span class="badge bg-info">{{ stock.vcp_score|floatformat:0 }}</span></td>
                                 </tr>
                                 {% empty %}
                                 <tr>
                                     <td colspan="3" class="text-center text-muted">No setups found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-warning">
+                        <h5 class="mb-0">🚀 High Momentum</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>1M</th>
+                                    <th>3M</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in high_momentum %}
+                                <tr>
+                                    <td><a href="{% url 'stocks:stock_detail' stock.symbol %}"><strong>{{ stock.symbol }}</strong></a></td>
+                                    <td><span class="text-success">+{{ stock.return_1m|floatformat:1 }}%</span></td>
+                                    <td><span class="text-success">+{{ stock.return_3m|floatformat:1 }}%</span></td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No stocks found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-danger text-white">
+                        <h5 class="mb-0">★ New 52-Week Highs</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>RS</th>
+                                    <th>Price</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stock in new_highs %}
+                                <tr>
+                                    <td><a href="{% url 'stocks:stock_detail' stock.symbol %}"><strong>{{ stock.symbol }}</strong></a></td>
+                                    <td><span class="badge bg-success">{{ stock.relative_strength|floatformat:0 }}</span></td>
+                                    <td>${{ stock.close_price|floatformat:2 }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No new highs</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0">📊 Top Sectors</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Industry</th>
+                                    <th>RS</th>
+                                    <th>#</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for sector in top_sectors %}
+                                <tr>
+                                    <td><small>{{ sector.sic_description|truncatewords:3 }}</small></td>
+                                    <td>
+                                        {% if sector.sector_rs >= 70 %}
+                                            <span class="badge bg-success">{{ sector.sector_rs|floatformat:0 }}</span>
+                                        {% elif sector.sector_rs >= 50 %}
+                                            <span class="badge bg-info">{{ sector.sector_rs|floatformat:0 }}</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ sector.sector_rs|floatformat:0 }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small>{{ sector.stock_count }}</small></td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No sector data</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

@@ -5,7 +5,7 @@ from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 from django_tables2 import SingleTableMixin
 from django_tables2.export.views import ExportMixin
-from .models import MinerviniMetrics, StockPrice, AIAnalysis, Watchlist
+from .models import MinerviniMetrics, StockPrice, AIAnalysis, Watchlist, TickerDetails, SectorPerformance
 from .tables import StockTable
 from datetime import datetime, timedelta
 import json
@@ -111,12 +111,28 @@ def dashboard_view(request):
         vcp_detected=True
     ).order_by('-vcp_score', '-relative_strength')[:10]
     
+    # Top performing sectors
+    top_sectors = SectorPerformance.objects.filter(date=latest_date).order_by('-sector_rs')[:10]
+    
+    # Stocks with high momentum (positive multi-timeframe returns)
+    high_momentum = all_stocks.filter(
+        return_1m__gt=0,
+        return_3m__gt=0,
+        passes_minervini=True
+    ).order_by('-return_3m')[:10]
+    
+    # New 52-week highs
+    new_highs = all_stocks.filter(is_52w_high=True, passes_minervini=True).order_by('-relative_strength')[:10]
+    
     context = {
         'latest_date': latest_date,
         'stats': stats,
         'top_rs': top_rs,
         'top_vcp': top_vcp,
         'best_setups': best_setups,
+        'top_sectors': top_sectors,
+        'high_momentum': high_momentum,
+        'new_highs': new_highs,
     }
     
     return render(request, 'stocks/dashboard.html', context)
@@ -182,6 +198,15 @@ def stock_detail_view(request, symbol):
         }
         model_display_name = model_names.get(latest_analysis.model_used, latest_analysis.model_used)
     
+    # Get ticker details
+    ticker_details = None
+    try:
+        ticker_details = TickerDetails.objects.get(symbol=symbol.upper())
+    except TickerDetails.DoesNotExist:
+        pass
+    except Exception as e:
+        print(f"Warning: Could not load ticker details: {e}")
+    
     context = {
         'symbol': symbol.upper(),
         'metrics': current_metrics,
@@ -190,6 +215,7 @@ def stock_detail_view(request, symbol):
         'chart_data': json.dumps(chart_data),
         'latest_analysis': latest_analysis,
         'analysis_model_name': model_display_name,
+        'ticker_details': ticker_details,
     }
     
     return render(request, 'stocks/stock_detail.html', context)
@@ -475,6 +501,47 @@ def check_watchlist_status(request, symbol):
         'in_watchlist': is_in_watchlist,
         'symbol': symbol.upper()
     })
+
+
+@require_http_methods(["GET"])
+def proxy_company_image(request):
+    """
+    Proxy company branding images from Massive API to hide the API key.
+    Reads API key from ~/.massive-api/api_key.txt
+    """
+    import requests
+    from django.http import HttpResponse
+    
+    image_url = request.GET.get('url')
+    
+    if not image_url:
+        return HttpResponse('Missing URL parameter', status=400)
+    
+    # Read API key from file
+    try:
+        api_key_file = Path.home() / ".massive-api" / "api_key.txt"
+        if not api_key_file.exists():
+            return HttpResponse('API key file not found', status=500)
+        
+        api_key = api_key_file.read_text().strip()
+        
+        # Add API key as query parameter
+        separator = '&' if '?' in image_url else '?'
+        full_url = f"{image_url}{separator}apiKey={api_key}"
+        
+        # Fetch the image
+        response = requests.get(full_url, timeout=5)
+        
+        if response.status_code == 200:
+            # Return the image with proper content type
+            content_type = response.headers.get('Content-Type', 'image/png')
+            return HttpResponse(response.content, content_type=content_type)
+        else:
+            return HttpResponse('Image not found', status=404)
+            
+    except Exception as e:
+        print(f"Error proxying image: {e}")
+        return HttpResponse('Error fetching image', status=500)
 
 
 @require_http_methods(["GET"])

@@ -1,5 +1,6 @@
 {% extends 'stocks/base.html' %}
 {% load django_bootstrap5 %}
+{% load humanize %}
 
 {% block title %}{{ symbol }} - Stock Detail{% endblock %}
 
@@ -20,6 +21,89 @@
             <span id="watchlistIcon">☆</span> Watchlist
         </button>
     </div>
+
+    {% if ticker_details %}
+    <!-- Company Information -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <div class="d-flex align-items-center">
+                        {% if ticker_details.icon_url %}
+                        <img src="{% url 'stocks:proxy_company_image' %}?url={{ ticker_details.icon_url|urlencode }}" alt="{{ ticker_details.name }}" style="height: 32px; margin-right: 12px; background: white; border-radius: 4px; padding: 4px;" onerror="this.style.display='none'">
+                        {% endif %}
+                        <h5 class="mb-0">🏢 {{ ticker_details.name|default:symbol }}</h5>
+                    </div>
+                    {% if ticker_details.homepage_url %}
+                    <a href="{{ ticker_details.homepage_url }}" target="_blank" class="btn btn-sm btn-light">
+                        Visit Website →
+                    </a>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Company Description -->
+                        <div class="col-lg-8 mb-3">
+                            {% if ticker_details.description %}
+                            <h6 class="text-muted">About</h6>
+                            <p class="mb-0">{{ ticker_details.description }}</p>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Company Details -->
+                        <div class="col-lg-4">
+                            <h6 class="text-muted">Company Details</h6>
+                            <table class="table table-sm">
+                                {% if ticker_details.market_cap %}
+                                <tr>
+                                    <td><strong>Market Cap:</strong></td>
+                                    <td class="text-end">{{ ticker_details.market_cap_formatted }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if ticker_details.primary_exchange %}
+                                <tr>
+                                    <td><strong>Exchange:</strong></td>
+                                    <td class="text-end">{{ ticker_details.primary_exchange }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if ticker_details.sic_description %}
+                                <tr>
+                                    <td><strong>Industry:</strong></td>
+                                    <td class="text-end">{{ ticker_details.sic_description }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if ticker_details.total_employees %}
+                                <tr>
+                                    <td><strong>Employees:</strong></td>
+                                    <td class="text-end">{{ ticker_details.total_employees|floatformat:0|intcomma }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if ticker_details.list_date %}
+                                <tr>
+                                    <td><strong>Listed:</strong></td>
+                                    <td class="text-end">{{ ticker_details.list_date|date:"M d, Y" }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if ticker_details.address_city and ticker_details.address_state %}
+                                <tr>
+                                    <td><strong>Location:</strong></td>
+                                    <td class="text-end">{{ ticker_details.address_city }}, {{ ticker_details.address_state }}</td>
+                                </tr>
+                                {% endif %}
+                                {% if ticker_details.phone_number %}
+                                <tr>
+                                    <td><strong>Phone:</strong></td>
+                                    <td class="text-end">{{ ticker_details.phone_number }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     {% if metrics %}
         <div class="row mb-4">
@@ -113,6 +197,160 @@
                                         <span class="badge bg-success">✓ PASSED ({{ metrics.criteria_passed }}/9)</span>
                                     {% else %}
                                         <span class="badge bg-danger">{{ metrics.criteria_passed }}/9</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Enhanced Metrics Card -->
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">💎 Enhanced Metrics</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            {% if metrics.industry_rs %}
+                            <tr>
+                                <td><strong>Industry RS:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.industry_rs >= 70 %}
+                                        <span class="badge bg-success">{{ metrics.industry_rs|floatformat:0 }} - Leading</span>
+                                    {% elif metrics.industry_rs >= 50 %}
+                                        <span class="badge bg-info">{{ metrics.industry_rs|floatformat:0 }} - Average</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ metrics.industry_rs|floatformat:0 }} - Lagging</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.avg_dollar_volume %}
+                            <tr>
+                                <td><strong>Avg $ Volume:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.avg_dollar_volume >= 50000000 %}
+                                        <span class="text-success">${{ metrics.avg_dollar_volume|floatformat:0|intcomma }}</span>
+                                    {% elif metrics.avg_dollar_volume >= 20000000 %}
+                                        <span class="text-info">${{ metrics.avg_dollar_volume|floatformat:0|intcomma }}</span>
+                                    {% else %}
+                                        <span class="text-warning">${{ metrics.avg_dollar_volume|floatformat:0|intcomma }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.volume_ratio %}
+                            <tr>
+                                <td><strong>Volume Ratio:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.volume_ratio >= 1.5 %}
+                                        <span class="badge bg-success">{{ metrics.volume_ratio|floatformat:1 }}x - High</span>
+                                    {% elif metrics.volume_ratio >= 1.0 %}
+                                        <span class="badge bg-info">{{ metrics.volume_ratio|floatformat:1 }}x</span>
+                                    {% elif metrics.volume_ratio >= 0.7 %}
+                                        <span>{{ metrics.volume_ratio|floatformat:1 }}x</span>
+                                    {% else %}
+                                        <span class="text-muted">{{ metrics.volume_ratio|floatformat:1 }}x - Low</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.atr_percent %}
+                            <tr>
+                                <td><strong>Volatility (ATR%):</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.atr_percent >= 5 %}
+                                        <span class="text-danger">{{ metrics.atr_percent|floatformat:1 }}% - High</span>
+                                    {% elif metrics.atr_percent >= 3 %}
+                                        <span class="text-warning">{{ metrics.atr_percent|floatformat:1 }}% - Medium</span>
+                                    {% else %}
+                                        <span class="text-success">{{ metrics.atr_percent|floatformat:1 }}% - Low</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td><strong>52-Week High:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.is_52w_high %}
+                                        <span class="badge bg-success">★ NEW HIGH</span>
+                                    {% else %}
+                                        <span class="text-muted">{{ metrics.days_since_52w_high }} days ago</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Momentum Card -->
+                <div class="card mb-3">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">📈 Momentum</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            {% if metrics.return_1m %}
+                            <tr>
+                                <td><strong>1-Month:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.return_1m > 0 %}
+                                        <span class="text-success">+{{ metrics.return_1m|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.return_1m|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.return_3m %}
+                            <tr>
+                                <td><strong>3-Month:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.return_3m > 0 %}
+                                        <span class="text-success">+{{ metrics.return_3m|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.return_3m|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.return_6m %}
+                            <tr>
+                                <td><strong>6-Month:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.return_6m > 0 %}
+                                        <span class="text-success">+{{ metrics.return_6m|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.return_6m|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.return_12m %}
+                            <tr>
+                                <td><strong>12-Month:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.return_12m > 0 %}
+                                        <span class="text-success">+{{ metrics.return_12m|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.return_12m|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td><strong>Trend:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.momentum_trend == "Strong Up" %}
+                                        <span class="badge bg-success">{{ metrics.momentum_trend }}</span>
+                                    {% elif metrics.momentum_trend == "Up" %}
+                                        <span class="badge bg-info">{{ metrics.momentum_trend }}</span>
+                                    {% elif metrics.momentum_trend == "Mixed" %}
+                                        <span class="badge bg-warning">{{ metrics.momentum_trend }}</span>
+                                    {% elif metrics.momentum_trend == "Down" %}
+                                        <span class="badge bg-danger">{{ metrics.momentum_trend }}</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ metrics.momentum_trend }}</span>
                                     {% endif %}
                                 </td>
                             </tr>
