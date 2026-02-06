@@ -182,8 +182,8 @@
 
 /* Stock Chart */
 #stockChart {
-    max-height: 500px;
-    min-height: 400px;
+    max-height: 550px;
+    min-height: 450px;
     touch-action: manipulation;
     background: transparent;
     border-radius: 8px;
@@ -213,9 +213,9 @@
     
     /* Make chart taller and more visible on mobile */
     #stockChart {
-        max-height: 450px !important;
-        min-height: 350px !important;
-        height: 400px !important;
+        max-height: 480px !important;
+        min-height: 380px !important;
+        height: 420px !important;
     }
     
     .chart-container {
@@ -267,9 +267,9 @@
 /* Extra small devices */
 @media (max-width: 576px) {
     #stockChart {
-        max-height: 350px !important;
-        min-height: 300px !important;
-        height: 320px !important;
+        max-height: 380px !important;
+        min-height: 330px !important;
+        height: 350px !important;
     }
     
     .chart-tip {
