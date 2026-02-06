@@ -121,29 +121,61 @@
                     <div class="card-body">
                         <!-- Date Range Filters -->
                         <div class="row mb-3">
-                            <div class="col-md-4">
+                            <div class="col-md-4 col-6 chart-date-inputs">
                                 <label for="startDate" class="form-label">From Date:</label>
                                 <input type="date" id="startDate" class="form-control form-control-sm">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-4 col-6 chart-date-inputs">
                                 <label for="endDate" class="form-label">To Date:</label>
                                 <input type="date" id="endDate" class="form-control form-control-sm">
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">&nbsp;</label>
-                                <div>
+                            <div class="col-md-4 col-12">
+                                <label class="form-label d-none d-md-block">&nbsp;</label>
+                                <div class="d-none d-md-flex gap-1">
                                     <button id="applyDateFilter" class="btn btn-sm btn-primary">Apply Filter</button>
                                     <button id="resetDateFilter" class="btn btn-sm btn-secondary">Reset</button>
                                     <button id="resetZoom" class="btn btn-sm btn-outline-secondary">Reset Zoom</button>
                                 </div>
+                                <!-- Mobile: Stack buttons vertically -->
+                                <div class="d-md-none chart-controls-mobile">
+                                    <button id="applyDateFilterMobile" class="btn btn-sm btn-primary">Apply Date Filter</button>
+                                    <button id="resetDateFilterMobile" class="btn btn-sm btn-secondary">Reset Filter</button>
+                                    <button id="resetZoomMobile" class="btn btn-sm btn-outline-secondary">Reset Zoom</button>
+                                </div>
                             </div>
                         </div>
+                        
+                        <!-- Quick Time Period Filters -->
+                        <div class="mb-3 quick-filter-section">
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <label class="form-label mb-0 quick-filter-label">⚡ Quick Filter:</label>
+                                <div class="btn-group btn-group-sm quick-period-buttons" role="group" aria-label="Time period filters">
+                                    <button type="button" class="btn btn-outline-secondary period-btn" data-period="1d">1D</button>
+                                    <button type="button" class="btn btn-outline-secondary period-btn" data-period="5d">5D</button>
+                                    <button type="button" class="btn btn-outline-secondary period-btn" data-period="1m">1M</button>
+                                    <button type="button" class="btn btn-outline-secondary period-btn" data-period="3m">3M</button>
+                                    <button type="button" class="btn btn-outline-secondary period-btn" data-period="6m">6M</button>
+                                    <button type="button" class="btn btn-outline-secondary period-btn" data-period="1y">1Y</button>
+                                    <button type="button" class="btn btn-outline-secondary period-btn" data-period="2y">2Y</button>
+                                    <button type="button" class="btn btn-outline-secondary period-btn active" data-period="all">ALL</button>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- Chart Canvas -->
-                        <canvas id="stockChart" style="max-height: 500px;"></canvas>
-                        <div class="mt-2">
-                            <small class="text-muted">
-                                💡 <strong>Tip:</strong> Scroll to zoom, drag to pan. Use buttons above to filter by date or reset zoom.
-                            </small>
+                        <div class="chart-container">
+                            <canvas id="stockChart"></canvas>
+                        </div>
+                        <div class="mt-3">
+                            <div class="chart-tip">
+                                <span class="chart-tip-icon">💡</span>
+                                <span class="chart-tip-text">
+                                    <strong>Interactive Chart:</strong> 
+                                    <span class="d-none d-md-inline">Scroll to zoom, click and drag to pan</span>
+                                    <span class="d-md-none">Pinch to zoom, drag to pan</span>
+                                    along the timeline. Use the date filters or reset button to adjust the view.
+                                </span>
+                            </div>
                         </div>
                     </div>
                     <div class="card-footer">
@@ -1000,37 +1032,58 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const ctx = document.getElementById('stockChart').getContext('2d');
         
+        // Create gradient for price line
+        const gradient = ctx.createLinearGradient(0, 0, 0, 450);
+        gradient.addColorStop(0, 'rgba(99, 102, 241, 0.4)');
+        gradient.addColorStop(0.5, 'rgba(99, 102, 241, 0.2)');
+        gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+        
         const stockChart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: chartData.dates,
                 datasets: [
                     {
-                        label: 'Price',
+                        label: '💰 Price',
                         data: chartData.prices,
-                        borderColor: 'rgb(13, 110, 253)',
-                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
-                        borderWidth: 2,
+                        borderColor: 'rgb(99, 102, 241)',
+                        backgroundColor: gradient,
+                        borderWidth: 3,
                         fill: true,
-                        tension: 0.1,
+                        tension: 0.4,
                         yAxisID: 'y',
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        pointHoverBackgroundColor: 'rgb(99, 102, 241)',
+                        pointHoverBorderColor: '#fff',
+                        pointHoverBorderWidth: 0,
+                        segment: {
+                            borderColor: function(ctx) {
+                                // Color the line green if going up, red if going down
+                                const prev = ctx.p0.parsed.y;
+                                const curr = ctx.p1.parsed.y;
+                                return curr > prev ? 'rgb(16, 185, 129)' : curr < prev ? 'rgb(239, 68, 68)' : 'rgb(99, 102, 241)';
+                            }
+                        }
                     },
                     {
-                        label: 'High',
+                        label: '📈 52W High',
                         data: chartData.highs,
-                        borderColor: 'rgba(40, 167, 69, 0.3)',
-                        borderWidth: 1,
-                        borderDash: [5, 5],
+                        borderColor: 'rgba(16, 185, 129, 0.6)',
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [8, 4],
                         fill: false,
                         pointRadius: 0,
                         yAxisID: 'y',
                     },
                     {
-                        label: 'Low',
+                        label: '📉 52W Low',
                         data: chartData.lows,
-                        borderColor: 'rgba(220, 53, 69, 0.3)',
-                        borderWidth: 1,
-                        borderDash: [5, 5],
+                        borderColor: 'rgba(239, 68, 68, 0.6)',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        borderWidth: 2,
+                        borderDash: [8, 4],
                         fill: false,
                         pointRadius: 0,
                         yAxisID: 'y',
@@ -1039,7 +1092,15 @@ document.addEventListener('DOMContentLoaded', function() {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: {
+                        left: 5,
+                        right: 5,
+                        top: 5,
+                        bottom: 5
+                    }
+                },
                 interaction: {
                     mode: 'index',
                     intersect: false,
@@ -1048,8 +1109,40 @@ document.addEventListener('DOMContentLoaded', function() {
                     legend: {
                         display: true,
                         position: 'top',
+                        align: 'start',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            padding: 12,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            font: {
+                                size: window.innerWidth < 768 ? 10 : 12,
+                                family: "'Inter', 'Segoe UI', 'Roboto', sans-serif",
+                                weight: '500'
+                            },
+                            color: '#374151'
+                        }
                     },
                     tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                        titleColor: '#fff',
+                        titleFont: {
+                            size: 14,
+                            weight: 'bold'
+                        },
+                        bodyColor: '#e5e7eb',
+                        bodyFont: {
+                            size: 13
+                        },
+                        padding: 12,
+                        borderColor: 'rgba(99, 102, 241, 0.3)',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        displayColors: true,
                         callbacks: {
                             label: function(context) {
                                 let label = context.dataset.label || '';
@@ -1060,6 +1153,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                     label += '$' + context.parsed.y.toFixed(2);
                                 }
                                 return label;
+                            },
+                            title: function(tooltipItems) {
+                                return '📅 ' + tooltipItems[0].label;
                             }
                         }
                     },
@@ -1068,6 +1164,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             enabled: true,
                             mode: 'x',
                             modifierKey: null,
+                            threshold: 5,
                         },
                         zoom: {
                             wheel: {
@@ -1075,7 +1172,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 speed: 0.1,
                             },
                             pinch: {
-                                enabled: true
+                                enabled: true,
+                                speed: 0.1
                             },
                             mode: 'x',
                         },
@@ -1087,31 +1185,85 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 },
+                animation: {
+                    duration: 1000,
+                    easing: 'easeInOutQuart',
+                    onComplete: function() {
+                        // Add a subtle pulse effect when chart finishes loading
+                        const canvas = document.getElementById('stockChart');
+                        canvas.style.opacity = '1';
+                    }
+                },
+                animations: {
+                    tension: {
+                        duration: 1000,
+                        easing: 'easeInOutCubic',
+                        from: 0.3,
+                        to: 0.4,
+                        loop: false
+                    },
+                    y: {
+                        duration: 1200,
+                        from: function(ctx) {
+                            if (ctx.type === 'data') {
+                                return ctx.chart.scales.y.getPixelForValue(0);
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         display: true,
-                        title: {
+                        grid: {
                             display: true,
-                            text: 'Date'
+                            color: 'rgba(156, 163, 175, 0.1)',
+                            drawBorder: false,
+                            drawTicks: false,
+                        },
+                        border: {
+                            display: false
+                        },
+                        title: {
+                            display: false
                         },
                         ticks: {
-                            maxTicksLimit: 12,
+                            maxTicksLimit: window.innerWidth < 768 ? 6 : 12,
                             maxRotation: 45,
-                            minRotation: 45
+                            minRotation: 45,
+                            color: '#6b7280',
+                            font: {
+                                size: window.innerWidth < 768 ? 9 : 11,
+                                family: "'Inter', 'Segoe UI', 'Roboto', sans-serif"
+                            },
+                            padding: 4
                         }
                     },
                     y: {
                         type: 'linear',
                         display: true,
                         position: 'left',
-                        title: {
+                        grid: {
                             display: true,
-                            text: 'Price ($)'
+                            color: 'rgba(156, 163, 175, 0.15)',
+                            drawBorder: false,
+                            drawTicks: false,
+                        },
+                        border: {
+                            display: false
+                        },
+                        title: {
+                            display: false
                         },
                         ticks: {
                             callback: function(value) {
                                 return '$' + value.toFixed(2);
-                            }
+                            },
+                            color: '#6b7280',
+                            font: {
+                                size: window.innerWidth < 768 ? 9 : 11,
+                                family: "'Inter', 'Segoe UI', 'Roboto', sans-serif"
+                            },
+                            padding: 4
                         }
                     }
                 }
@@ -1178,6 +1330,142 @@ document.addEventListener('DOMContentLoaded', function() {
             
             stockChart.resetZoom();
             stockChart.update();
+        });
+        
+        // Mobile button handlers
+        const applyDateFilterMobile = document.getElementById('applyDateFilterMobile');
+        const resetDateFilterMobile = document.getElementById('resetDateFilterMobile');
+        const resetZoomMobile = document.getElementById('resetZoomMobile');
+        
+        if (applyDateFilterMobile) {
+            applyDateFilterMobile.addEventListener('click', function() {
+                document.getElementById('applyDateFilter').click();
+            });
+        }
+        
+        if (resetDateFilterMobile) {
+            resetDateFilterMobile.addEventListener('click', function() {
+                document.getElementById('resetDateFilter').click();
+            });
+        }
+        
+        if (resetZoomMobile) {
+            resetZoomMobile.addEventListener('click', function() {
+                document.getElementById('resetZoom').click();
+            });
+        }
+        
+        // Quick Period Filter buttons
+        const periodButtons = document.querySelectorAll('.period-btn');
+        
+        periodButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                // Remove active class from all buttons
+                periodButtons.forEach(btn => btn.classList.remove('active'));
+                // Add active class to clicked button
+                this.classList.add('active');
+                
+                const period = this.dataset.period;
+                const endDate = originalData.dates[originalData.dates.length - 1];
+                let startDate;
+                
+                if (period === 'all') {
+                    // Show all data
+                    stockChart.data.labels = originalData.dates;
+                    stockChart.data.datasets[0].data = originalData.prices;
+                    stockChart.data.datasets[1].data = originalData.highs;
+                    stockChart.data.datasets[2].data = originalData.lows;
+                    
+                    startDateInput.value = originalData.dates[0];
+                    endDateInput.value = endDate;
+                } else {
+                    // Calculate start date based on period
+                    const endDateObj = new Date(endDate);
+                    let startDateObj;
+                    
+                    switch(period) {
+                        case '1d':
+                            startDateObj = new Date(endDateObj);
+                            startDateObj.setDate(endDateObj.getDate() - 1);
+                            break;
+                        case '5d':
+                            startDateObj = new Date(endDateObj);
+                            startDateObj.setDate(endDateObj.getDate() - 5);
+                            break;
+                        case '1m':
+                            startDateObj = new Date(endDateObj);
+                            startDateObj.setMonth(endDateObj.getMonth() - 1);
+                            break;
+                        case '3m':
+                            startDateObj = new Date(endDateObj);
+                            startDateObj.setMonth(endDateObj.getMonth() - 3);
+                            break;
+                        case '6m':
+                            startDateObj = new Date(endDateObj);
+                            startDateObj.setMonth(endDateObj.getMonth() - 6);
+                            break;
+                        case '1y':
+                            startDateObj = new Date(endDateObj);
+                            startDateObj.setFullYear(endDateObj.getFullYear() - 1);
+                            break;
+                        case '2y':
+                            startDateObj = new Date(endDateObj);
+                            startDateObj.setFullYear(endDateObj.getFullYear() - 2);
+                            break;
+                        default:
+                            startDateObj = new Date(originalData.dates[0]);
+                    }
+                    
+                    startDate = startDateObj.toISOString().split('T')[0];
+                    
+                    // Filter data by calculated date range
+                    const filteredDates = [];
+                    const filteredPrices = [];
+                    const filteredHighs = [];
+                    const filteredLows = [];
+                    
+                    originalData.dates.forEach((date, index) => {
+                        if (date >= startDate && date <= endDate) {
+                            filteredDates.push(date);
+                            filteredPrices.push(originalData.prices[index]);
+                            filteredHighs.push(originalData.highs[index]);
+                            filteredLows.push(originalData.lows[index]);
+                        }
+                    });
+                    
+                    if (filteredDates.length > 0) {
+                        stockChart.data.labels = filteredDates;
+                        stockChart.data.datasets[0].data = filteredPrices;
+                        stockChart.data.datasets[1].data = filteredHighs;
+                        stockChart.data.datasets[2].data = filteredLows;
+                        
+                        // Update date inputs
+                        startDateInput.value = filteredDates[0];
+                        endDateInput.value = filteredDates[filteredDates.length - 1];
+                    } else {
+                        // No data for this period, show a brief message and revert to all
+                        const allButton = document.querySelector('.period-btn[data-period="all"]');
+                        if (allButton) {
+                            allButton.click();
+                        }
+                        
+                        // Optional: Show a toast or alert
+                        const tempMsg = document.createElement('div');
+                        tempMsg.className = 'alert alert-warning alert-dismissible fade show position-fixed';
+                        tempMsg.style.cssText = 'top: 20px; right: 20px; z-index: 9999; max-width: 300px;';
+                        tempMsg.innerHTML = `
+                            <strong>No data available</strong> for the ${period.toUpperCase()} period.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        document.body.appendChild(tempMsg);
+                        setTimeout(() => tempMsg.remove(), 3000);
+                        return;
+                    }
+                }
+                
+                stockChart.resetZoom();
+                stockChart.update('active');
+            });
         });
     }
 });

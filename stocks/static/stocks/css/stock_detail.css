@@ -6,6 +6,203 @@
     min-width: 200px;
 }
 
+/* Chart Controls Styling */
+.chart-date-inputs .form-label {
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.9rem;
+}
+
+.chart-date-inputs .form-control {
+    border: 2px solid #e5e7eb;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chart-date-inputs .form-control:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+#applyDateFilter,
+#applyDateFilterMobile {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    border: none;
+    font-weight: 600;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#applyDateFilter:hover,
+#applyDateFilterMobile:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+#resetZoom,
+#resetZoomMobile {
+    border: 2px solid #e5e7eb;
+    background: white;
+    color: #374151;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+#resetZoom:hover,
+#resetZoomMobile:hover {
+    border-color: #6366f1;
+    color: #6366f1;
+    background: #f9fafb;
+}
+
+/* Chart Card Styling */
+.card {
+    border: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.card-header.bg-primary {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
+    border: none;
+    padding: 1.25rem 1.5rem;
+}
+
+.card-header h5 {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.card-body {
+    padding: 1.5rem;
+}
+
+.card-footer {
+    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+    border-top: 1px solid #e5e7eb;
+    padding: 1rem 1.5rem;
+}
+
+.card-footer .btn {
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.card-footer .btn-outline-primary {
+    border-width: 2px;
+}
+
+.card-footer .btn-outline-primary:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+/* Quick Period Filter Section */
+.quick-filter-section {
+    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 12px 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.quick-filter-label {
+    color: #374151;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+/* Quick Period Filter Buttons */
+.quick-period-buttons {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.quick-period-buttons .btn-group {
+    gap: 0;
+}
+
+.period-btn {
+    border: 1px solid #d1d5db !important;
+    background: white;
+    color: #6b7280;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.9rem;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.period-btn:hover {
+    background: #f3f4f6;
+    color: #4f46e5;
+    border-color: #c7d2fe !important;
+    z-index: 1;
+}
+
+.period-btn.active {
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+    color: white;
+    border-color: #4f46e5 !important;
+    box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+    z-index: 2;
+}
+
+.period-btn:active {
+    transform: scale(0.95);
+}
+
+.period-btn:focus {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    z-index: 3;
+}
+
+/* Chart Tip Styling */
+.chart-tip {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+    border-left: 4px solid #6366f1;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #374151;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.chart-tip-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.chart-tip-text strong {
+    color: #4338ca;
+    font-weight: 600;
+}
+
+/* Stock Chart */
+#stockChart {
+    max-height: 500px;
+    min-height: 400px;
+    touch-action: manipulation;
+    background: transparent;
+    border-radius: 8px;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.3s ease-in;
+}
+
+.chart-container {
+    position: relative;
+    width: 100%;
+    height: auto;
+    touch-action: pan-x pinch-zoom;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    border-radius: 8px;
+    padding: 10px 8px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
 /* Mobile responsiveness */
 @media (max-width: 768px) {
     #modelSelect {
@@ -13,4 +210,116 @@
         min-width: auto;
         width: 125px;
     }
+    
+    /* Make chart taller and more visible on mobile */
+    #stockChart {
+        max-height: 450px !important;
+        min-height: 350px !important;
+        height: 400px !important;
+    }
+    
+    .chart-container {
+        margin-bottom: 1rem;
+        /* Prevent text selection while panning */
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    
+    /* Stack chart controls vertically on mobile */
+    .chart-controls-mobile {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+    
+    .chart-controls-mobile .btn {
+        width: 100%;
+        font-size: 0.9rem;
+        padding: 0.5rem;
+    }
+    
+    /* Adjust date inputs on mobile */
+    .chart-date-inputs {
+        margin-bottom: 0.5rem;
+    }
+    
+    .chart-date-inputs .form-label {
+        font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .chart-date-inputs .form-control-sm {
+        font-size: 0.85rem;
+    }
+    
+    /* Quick period buttons on mobile */
+    .quick-period-buttons {
+        flex-wrap: wrap;
+    }
+    
+    .period-btn {
+        font-size: 0.75rem;
+        padding: 0.35rem 0.7rem;
+    }
+}
+
+/* Extra small devices */
+@media (max-width: 576px) {
+    #stockChart {
+        max-height: 350px !important;
+        min-height: 300px !important;
+        height: 320px !important;
+    }
+    
+    .chart-tip {
+        font-size: 0.8rem;
+        padding: 10px 12px;
+    }
+    
+    .chart-tip-icon {
+        font-size: 1rem;
+    }
+    
+    /* Stack quick filter label and buttons */
+    .quick-filter-section .d-flex {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+    
+    .quick-filter-label {
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .quick-period-buttons {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+    }
+}
+
+/* Chart Animation */
+@keyframes chartFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chart-container {
+    animation: chartFadeIn 0.5s ease-out;
+}
+
+/* Button hover effects */
+.btn {
+    transition: all 0.2s ease-in-out;
+}
+
+.btn:active {
+    transform: scale(0.98);
 }

@@ -1,8 +1,11 @@
 package com.aeskreis.stockpicker
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -179,6 +182,68 @@ fun WebViewScreen(url: String, modifier: Modifier = Modifier) {
                 cookieManager.setAcceptThirdPartyCookies(this, true)
                 
                 webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        val url = request?.url ?: return false
+                        
+                        // Handle intent:// URLs
+                        if (url.scheme == "intent") {
+                            try {
+                                val intent = Intent.parseUri(url.toString(), Intent.URI_INTENT_SCHEME)
+                                if (context.packageManager.resolveActivity(intent, 0) != null) {
+                                    context.startActivity(intent)
+                                    return true
+                                }
+                                // Try to get fallback URL
+                                val fallbackUrl = intent.getStringExtra("browser_fallback_url")
+                                if (fallbackUrl != null) {
+                                    view?.loadUrl(fallbackUrl)
+                                    return true
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                            return true
+                        }
+                        
+                        // Handle custom schemes (robinhood://, market://, etc.)
+                        if (url.scheme != "http" && url.scheme != "https") {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, url)
+                                if (context.packageManager.resolveActivity(intent, 0) != null) {
+                                    context.startActivity(intent)
+                                    return true
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                            return true
+                        }
+                        
+                        // For http/https, check if another app should handle it
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, url)
+                            // Check if there are multiple apps that can handle this
+                            val activities = context.packageManager.queryIntentActivities(intent, 0)
+                            // If there's a specific app for this domain (not just browsers), use it
+                            if (activities.size > 0) {
+                                for (resolveInfo in activities) {
+                                    val packageName = resolveInfo.activityInfo.packageName
+                                    // If it's not a browser and not our app, launch it
+                                    if (!packageName.contains("browser") && 
+                                        !packageName.contains("chrome") && 
+                                        packageName != context.packageName) {
+                                        context.startActivity(intent)
+                                        return true
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                        
+                        return false
+                    }
+                    
                     override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                         super.doUpdateVisitedHistory(view, url, isReload)
                         canGoBack = view?.canGoBack() ?: false
