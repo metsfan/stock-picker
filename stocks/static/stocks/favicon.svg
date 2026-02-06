@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="bg-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0D47A1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E88E5;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="32" height="32" fill="url(#bg-gradient)" rx="2"/>
+  
+  <!-- Chart bars/candlesticks -->
+  <rect x="5" y="14" width="2" height="12" fill="#FFFFFF"/>
+  <rect x="9" y="12" width="2" height="12" fill="#4CAF50"/>
+  <rect x="13" y="15" width="2" height="9" fill="#FFFFFF"/>
+  <rect x="17" y="10" width="2" height="14" fill="#4CAF50"/>
+  <rect x="21" y="8" width="2" height="16" fill="#FFFFFF"/>
+  <rect x="25" y="6" width="2" height="18" fill="#4CAF50"/>
+  
+  <!-- Trend line going up -->
+  <path d="M 4 22 L 7 18 L 10 15 L 14 12 L 18 9 L 22 7 L 28 4" 
+        stroke="#FFC107" 
+        stroke-width="1.5" 
+        stroke-linecap="round" 
+        stroke-linejoin="round" 
+        fill="none"/>
+  
+  <!-- Dollar sign -->
+  <text x="3" y="8" font-family="Arial, sans-serif" font-size="5" font-weight="bold" fill="#FFFFFF">$</text>
+</svg>
