@@ -1,8 +1,13 @@
 {% extends 'stocks/base.html' %}
 {% load django_bootstrap5 %}
 {% load humanize %}
+{% load static %}
 
 {% block title %}{{ symbol }} - Stock Detail{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'stocks/css/stock_detail.css' %}">
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
@@ -619,7 +624,7 @@
                     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">🤖 AI Analysis</h5>
                         <div class="d-flex align-items-center" style="gap: 0.5rem;">
-                            <select id="modelSelect" class="form-select form-select-sm" style="width: auto; min-width: 200px;">
+                            <select id="modelSelect" class="form-select form-select-sm">
                                 <option value="claude-sonnet-4-20250514" selected>Sonnet 4.5 (Recommended)</option>
                                 <option value="claude-opus-4-20250514">Opus 4.5 (Most Capable)</option>
                                 <option value="claude-haiku-4-20250514">Haiku 4.5 (Fastest)</option>

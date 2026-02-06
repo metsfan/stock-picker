@@ -295,13 +295,14 @@ CREATE INDEX IF NOT EXISTS idx_upcoming_earnings ON minervini_metrics(has_upcomi
 
 -- Sector performance tracking table (aggregated from individual stocks)
 CREATE TABLE IF NOT EXISTS sector_performance (
+    id SERIAL PRIMARY KEY,
     date DATE NOT NULL,
     sic_code VARCHAR(10) NOT NULL,
     sic_description VARCHAR(255),
     sector_return_90d NUMERIC(10, 2),  -- 90-day sector return
     sector_rs NUMERIC(10, 2),          -- Sector relative strength vs market
     stock_count INTEGER,               -- Number of stocks in sector
-    PRIMARY KEY (date, sic_code)
+    UNIQUE (date, sic_code)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sector_perf_date ON sector_performance(date);

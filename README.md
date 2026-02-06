@@ -387,6 +387,29 @@ Then open **http://localhost:8000** in your browser.
 - 🎨 Color-coded badges for easy visual scanning
 - 📱 Responsive Bootstrap design
 
+### Running the Pipeline
+
+To run all data fetching and analysis scripts in sequence:
+
+```bash
+# Linux/Mac/WSL
+cd scripts
+./run_pipeline.sh
+
+# Windows
+cd scripts
+run_pipeline.bat
+```
+
+The pipeline will:
+1. Fetch split-adjusted stock prices (15 months)
+2. Fetch historical earnings data
+3. Fetch upcoming earnings calendar
+4. Fetch financial statements
+5. Run Minervini analysis
+
+If any step fails, the pipeline stops immediately.
+
 ### Notes
 
 - **Resume Support**: Run the script multiple times - it automatically skips files that already exist
