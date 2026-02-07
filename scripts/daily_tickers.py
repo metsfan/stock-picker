@@ -40,8 +40,8 @@ def get_db_connection():
             host='localhost',
             port=5432,
             database='stocks',
-            user='postgres',
-            password='adamesk'
+            user='stocks',
+            password='stocks'
         )
         return conn
     except psycopg2.Error as e:
