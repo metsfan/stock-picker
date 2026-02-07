@@ -2439,26 +2439,28 @@ class MinerviniAnalyzer:
 
 def main():
     """Main execution function."""
-    # Use today's date (price data is fetched up to current day)
-    target_date = datetime.now().strftime("%Y-%m-%d")
-    
     print("=" * 80)
     print("Minervini Stock Analyzer")
     print("=" * 80)
-    print(f"Target date: {target_date} (latest available)")
     
     # Initialize analyzer
     analyzer = MinerviniAnalyzer()
     
-    # Check if data exists for this date
-    if not analyzer.check_data_exists(target_date):
-        print(f"\n⚠ No data found in database for {target_date}")
+    # Use the latest date available in stock_prices
+    cursor = analyzer.conn.cursor()
+    cursor.execute("SELECT MAX(date) FROM stock_prices")
+    result = cursor.fetchone()
+    cursor.close()
+    
+    if not result or not result[0]:
+        print("\n⚠ No data found in stock_prices table")
         print("Run the download script first to load data:")
         print("  python download_stock_data.py")
         analyzer.close()
         return
     
-    print(f"✓ Data found in database for {target_date}")
+    target_date = result[0].strftime("%Y-%m-%d")
+    print(f"Target date: {target_date} (latest in stock_prices)")
     
     # Analyze stocks
     analyzed, passed = analyzer.analyze_date(target_date)
