@@ -5,7 +5,7 @@ from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 from django_tables2 import SingleTableMixin
 from django_tables2.export.views import ExportMixin
-from .models import MinerviniMetrics, StockPrice, AIAnalysis, Watchlist, TickerDetails, SectorPerformance
+from .models import MinerviniMetrics, StockPrice, AIAnalysis, Watchlist, TickerDetails, SectorPerformance, Notification
 from .tables import StockTable
 from datetime import datetime, timedelta
 import json
@@ -528,6 +528,66 @@ def watchlist_view(request):
     }
     
     return render(request, 'stocks/watchlist.html', context)
+
+
+def notifications_view(request):
+    """View showing paginated list of notifications, newest first."""
+    from django.core.paginator import Paginator
+
+    # Filter parameters
+    type_filter = request.GET.get('type', 'all')
+    read_filter = request.GET.get('read', 'all')
+
+    queryset = Notification.objects.all().order_by('-created_at')
+
+    if type_filter != 'all':
+        queryset = queryset.filter(notification_type=type_filter)
+
+    if read_filter == 'unread':
+        queryset = queryset.filter(is_read=False)
+    elif read_filter == 'read':
+        queryset = queryset.filter(is_read=True)
+
+    paginator = Paginator(queryset, 25)
+    page_number = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_number)
+
+    # Counts for filter badges
+    all_count = Notification.objects.count()
+    unread_count = Notification.objects.filter(is_read=False).count()
+    type_counts = {}
+    for code, _label in Notification.NOTIFICATION_TYPES:
+        type_counts[code] = Notification.objects.filter(notification_type=code).count()
+
+    context = {
+        'page_obj': page_obj,
+        'current_type': type_filter,
+        'current_read': read_filter,
+        'all_count': all_count,
+        'unread_count': unread_count,
+        'type_counts': type_counts,
+    }
+
+    return render(request, 'stocks/notifications.html', context)
+
+
+@require_http_methods(["POST"])
+def mark_notification_read(request, notification_id):
+    """Mark a single notification as read."""
+    try:
+        notification = Notification.objects.get(id=notification_id)
+        notification.is_read = True
+        notification.save(update_fields=['is_read'])
+        return JsonResponse({'success': True})
+    except Notification.DoesNotExist:
+        return JsonResponse({'error': 'Notification not found'}, status=404)
+
+
+@require_http_methods(["POST"])
+def mark_all_notifications_read(request):
+    """Mark all notifications as read."""
+    updated = Notification.objects.filter(is_read=False).update(is_read=True)
+    return JsonResponse({'success': True, 'updated': updated})
 
 
 @require_http_methods(["POST"])

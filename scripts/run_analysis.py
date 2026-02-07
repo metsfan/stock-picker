@@ -15,13 +15,13 @@ minervini = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(minervini)
 
 
-def analyze_date(date_str, recreate_db=False):
+def analyze_date(date_str):
     """Analyze a specific date."""
     print(f"\n{'='*80}")
     print(f"Analyzing {date_str}")
     print(f"{'='*80}")
     
-    analyzer = minervini.MinerviniAnalyzer(recreate_db=recreate_db)
+    analyzer = minervini.MinerviniAnalyzer()
     
     try:
         # Check if data exists in database
@@ -29,8 +29,11 @@ def analyze_date(date_str, recreate_db=False):
             print(f"⊙ Skipping {date_str} (no data in database)")
             return False
         
-        # Analyze
-        analyzed, passed = analyzer.analyze_date(date_str)
+        # Analyze (metrics buffered in memory)
+        analyzed, passed, buffered_metrics = analyzer.analyze_date(date_str)
+
+        # Persist metrics
+        analyzer.db.save_metrics_batch(buffered_metrics)
         
         print(f"\n✓ {date_str}: {passed}/{analyzed} stocks passed Minervini criteria")
         
@@ -52,15 +55,12 @@ def analyze_date_range(start_date_str, end_date_str):
     successful = 0
     skipped = 0
     failed = 0
-    first_date = True
     
     while current_date <= end_date:
         date_str = current_date.strftime("%Y-%m-%d")
         
         try:
-            # Only recreate DB on the first date
-            result = analyze_date(date_str, recreate_db=first_date)
-            first_date = False
+            result = analyze_date(date_str)
             
             if result:
                 successful += 1
@@ -115,7 +115,7 @@ def main():
         latest_available = datetime.now() - timedelta(days=2)
         date_str = latest_available.strftime("%Y-%m-%d")
         print(f"Using latest available date: {date_str} (today minus 2 days)")
-        analyze_date(date_str, recreate_db=True)
+        analyze_date(date_str)
     
     elif sys.argv[1].lower() == "last":
         if len(sys.argv) < 3:
@@ -126,7 +126,7 @@ def main():
     
     elif len(sys.argv) == 2:
         # Single date
-        analyze_date(sys.argv[1], recreate_db=True)
+        analyze_date(sys.argv[1])
     
     elif len(sys.argv) == 3:
         # Date range

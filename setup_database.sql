@@ -364,3 +364,25 @@ CREATE INDEX IF NOT EXISTS idx_signal ON minervini_metrics(signal);
 CREATE INDEX IF NOT EXISTS idx_signal_date ON minervini_metrics(date, signal);
 CREATE INDEX IF NOT EXISTS idx_buy_signals ON minervini_metrics(date, signal) WHERE signal = 'BUY';
 CREATE INDEX IF NOT EXISTS idx_wait_signals ON minervini_metrics(date, signal) WHERE signal = 'WAIT';
+
+-- ============================================================
+-- Notifications table
+-- Stores actionable alerts generated during Minervini analysis
+-- for stocks on the watchlist.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(20) NOT NULL,
+    date DATE NOT NULL,
+    notification_type VARCHAR(30) NOT NULL,   -- 'WAIT_TO_BUY', 'METRIC_CHANGE', 'EARNINGS_SURPRISE'
+    title VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    metadata JSONB,                           -- old/new values, contextual data
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_read BOOLEAN DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_symbol ON notifications(symbol);
+CREATE INDEX IF NOT EXISTS idx_notifications_date ON notifications(date);
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(is_read) WHERE is_read = FALSE;

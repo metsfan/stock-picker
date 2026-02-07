@@ -18,6 +18,7 @@ from .sector import SectorAnalyzer
 from .earnings import EarningsAnalyzer
 from .patterns import PatternDetector
 from .signals import SignalGenerator
+from .notifications import NotificationManager
 
 
 class MinerviniAnalyzer:
@@ -38,7 +39,7 @@ class MinerviniAnalyzer:
     These 8 book criteria expand to 9 discrete checks + RS filter.
     """
 
-    def __init__(self, recreate_db=True):
+    def __init__(self):
         """Initialize the analyzer with database connection and all sub-modules."""
         # Market benchmark symbols and their weights for relative strength calculation
         self.market_benchmarks = {
@@ -63,10 +64,7 @@ class MinerviniAnalyzer:
         self.earnings = EarningsAnalyzer(self.conn)
         self.patterns = PatternDetector(self.conn)
         self.signals = SignalGenerator()
-
-        # Clear analysis tables if requested
-        if recreate_db:
-            self.db.truncate_metrics_table()
+        self.notifications = NotificationManager(self.conn)
 
     def check_data_exists(self, date):
         """Check if data exists in the database for a given date."""
@@ -401,13 +399,14 @@ class MinerviniAnalyzer:
         analyzed = 0
         passed = 0
         skipped = 0
+        buffered_metrics = []  # accumulate in memory, write at the end
 
         for i, symbol in enumerate(symbols):
             try:
                 metrics = self.evaluate_minervini_criteria(symbol, date)
 
                 if metrics:
-                    self.db.save_metrics(metrics)
+                    buffered_metrics.append(metrics)
                     analyzed += 1
 
                     if metrics['passes_minervini']:
@@ -449,41 +448,26 @@ class MinerviniAnalyzer:
                 skipped += 1
                 continue
 
-        # Count stocks by market cap tier (for passed stocks)
-        cursor.execute("""
-            SELECT COUNT(DISTINCT mm.symbol) as count
-            FROM minervini_metrics mm
-            LEFT JOIN ticker_details td ON mm.symbol = td.symbol
-            WHERE mm.date = %s AND mm.passes_minervini = true
-            AND td.market_cap >= 300000000 AND td.market_cap < 2000000000
-        """, (date,))
-        small_cap_count = cursor.fetchone()[0]
+        # Compute summary statistics from in-memory buffer
+        passing_metrics = [m for m in buffered_metrics if m.get('passes_minervini')]
 
-        cursor.execute("""
-            SELECT COUNT(DISTINCT mm.symbol) as count
-            FROM minervini_metrics mm
-            LEFT JOIN ticker_details td ON mm.symbol = td.symbol
-            WHERE mm.date = %s AND mm.passes_minervini = true
-            AND td.market_cap >= 2000000000 AND td.market_cap < 10000000000
-        """, (date,))
-        mid_cap_count = cursor.fetchone()[0]
+        signal_counts = {}
+        small_cap_count = 0
+        mid_cap_count = 0
+        large_cap_count = 0
 
-        cursor.execute("""
-            SELECT COUNT(DISTINCT mm.symbol) as count
-            FROM minervini_metrics mm
-            LEFT JOIN ticker_details td ON mm.symbol = td.symbol
-            WHERE mm.date = %s AND mm.passes_minervini = true
-            AND td.market_cap >= 10000000000
-        """, (date,))
-        large_cap_count = cursor.fetchone()[0]
+        for m in passing_metrics:
+            sig = m.get('signal')
+            if sig:
+                signal_counts[sig] = signal_counts.get(sig, 0) + 1
 
-        # Count signal distribution
-        cursor.execute("""
-            SELECT signal, COUNT(*) FROM minervini_metrics
-            WHERE date = %s AND passes_minervini = true AND signal IS NOT NULL
-            GROUP BY signal ORDER BY signal
-        """, (date,))
-        signal_counts = {row[0]: row[1] for row in cursor.fetchall()}
+            tier = m.get('_market_cap_tier', '')
+            if 'Small' in tier:
+                small_cap_count += 1
+            elif 'Mid' in tier:
+                mid_cap_count += 1
+            elif 'Large' in tier or 'Mega' in tier:
+                large_cap_count += 1
 
         print(f"\nAnalysis Summary:")
         print(f"  Total symbols: {len(symbols)}")
@@ -507,7 +491,7 @@ class MinerviniAnalyzer:
                 print(f"    Unknown/Micro Cap: {passed - total_categorized}")
 
         cursor.close()
-        return analyzed, passed
+        return analyzed, passed, buffered_metrics
 
     def close(self):
         """Close database connection."""
@@ -539,8 +523,34 @@ def main():
     target_date = result[0].strftime("%Y-%m-%d")
     print(f"Target date: {target_date} (latest in stock_prices)")
 
-    # Analyze stocks
-    analyzed, passed = analyzer.analyze_date(target_date)
+    # Analyze stocks (metrics buffered in memory)
+    analyzed, passed, buffered_metrics = analyzer.analyze_date(target_date)
+
+    # ------------------------------------------------------------------
+    # Generate notifications for watchlist stocks (before writing to DB
+    # so we can compare new metrics against previous data still in the DB)
+    # ------------------------------------------------------------------
+    watchlist_symbols = analyzer.db.get_watchlist_symbols()
+    notifications = []
+
+    if watchlist_symbols:
+        metrics_by_symbol = {m['symbol']: m for m in buffered_metrics}
+        notifications = analyzer.notifications.generate_notifications(
+            watchlist_symbols, metrics_by_symbol, target_date, analyzer.db
+        )
+
+    # ------------------------------------------------------------------
+    # Persist everything: metrics first, then notifications
+    # ------------------------------------------------------------------
+    print("\nSaving metrics to database...")
+    analyzer.db.save_metrics_batch(buffered_metrics)
+
+    if notifications:
+        analyzer.db.save_notifications_batch(notifications)
+        print(f"✓ Saved {len(notifications)} notification(s)")
+
+    # Print notifications
+    analyzer.notifications.print_notifications(notifications)
 
     # Show top stocks
     if passed > 0:

@@ -340,6 +340,65 @@ class SectorPerformance(models.Model):
             return "Lagging"
 
 
+class Notification(models.Model):
+    """Model for watchlist stock notifications generated during Minervini analysis."""
+
+    NOTIFICATION_TYPES = [
+        ('WAIT_TO_BUY', 'Wait to Buy'),
+        ('METRIC_CHANGE', 'Metric Change'),
+        ('EARNINGS_SURPRISE', 'Earnings Surprise'),
+    ]
+
+    symbol = models.CharField(max_length=20)
+    date = models.DateField()
+    notification_type = models.CharField(max_length=30, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=200)
+    message = models.TextField()
+    metadata = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'notifications'
+        managed = False  # Table created by setup_database.sql
+        ordering = ['-created_at']
+        verbose_name = 'Notification'
+        verbose_name_plural = 'Notifications'
+
+    def __str__(self):
+        return f"{self.symbol} - {self.notification_type} - {self.date}"
+
+    @property
+    def type_badge_class(self):
+        """Bootstrap badge class for notification type."""
+        classes = {
+            'WAIT_TO_BUY': 'bg-success',
+            'METRIC_CHANGE': 'bg-info',
+            'EARNINGS_SURPRISE': 'bg-warning text-dark',
+        }
+        return classes.get(self.notification_type, 'bg-secondary')
+
+    @property
+    def type_icon(self):
+        """Emoji icon for notification type."""
+        icons = {
+            'WAIT_TO_BUY': '🟢',
+            'METRIC_CHANGE': '🔄',
+            'EARNINGS_SURPRISE': '💰',
+        }
+        return icons.get(self.notification_type, '🔔')
+
+    @property
+    def type_display(self):
+        """Human-readable notification type."""
+        labels = {
+            'WAIT_TO_BUY': 'Wait → Buy',
+            'METRIC_CHANGE': 'Metric Change',
+            'EARNINGS_SURPRISE': 'Earnings Surprise',
+        }
+        return labels.get(self.notification_type, self.notification_type)
+
+
 class TickerDetails(models.Model):
     """Model for detailed ticker information from Massive API"""
     

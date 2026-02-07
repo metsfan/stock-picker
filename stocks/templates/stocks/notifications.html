@@ -1,0 +1,231 @@
+{% extends 'stocks/base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}Notifications - Stock Picker{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1>🔔 Notifications</h1>
+        {% if unread_count > 0 %}
+        <button id="markAllRead" class="btn btn-outline-primary btn-sm">
+            Mark all as read ({{ unread_count }})
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Filter bar -->
+    <div class="card mb-4">
+        <div class="card-body py-2">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <strong class="me-2">Type:</strong>
+                <a href="?type=all&read={{ current_read }}"
+                   class="btn btn-sm {% if current_type == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    All <span class="badge bg-light text-dark">{{ all_count }}</span>
+                </a>
+                <a href="?type=WAIT_TO_BUY&read={{ current_read }}"
+                   class="btn btn-sm {% if current_type == 'WAIT_TO_BUY' %}btn-success{% else %}btn-outline-success{% endif %}">
+                    🟢 Wait → Buy <span class="badge bg-light text-dark">{{ type_counts.WAIT_TO_BUY }}</span>
+                </a>
+                <a href="?type=METRIC_CHANGE&read={{ current_read }}"
+                   class="btn btn-sm {% if current_type == 'METRIC_CHANGE' %}btn-info{% else %}btn-outline-info{% endif %}">
+                    🔄 Metric Change <span class="badge bg-light text-dark">{{ type_counts.METRIC_CHANGE }}</span>
+                </a>
+                <a href="?type=EARNINGS_SURPRISE&read={{ current_read }}"
+                   class="btn btn-sm {% if current_type == 'EARNINGS_SURPRISE' %}btn-warning{% else %}btn-outline-warning{% endif %}">
+                    💰 Earnings Surprise <span class="badge bg-light text-dark">{{ type_counts.EARNINGS_SURPRISE }}</span>
+                </a>
+
+                <span class="mx-2 text-muted">|</span>
+                <strong class="me-2">Status:</strong>
+                <a href="?type={{ current_type }}&read=all"
+                   class="btn btn-sm {% if current_read == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    All
+                </a>
+                <a href="?type={{ current_type }}&read=unread"
+                   class="btn btn-sm {% if current_read == 'unread' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    Unread <span class="badge bg-light text-dark">{{ unread_count }}</span>
+                </a>
+                <a href="?type={{ current_type }}&read=read"
+                   class="btn btn-sm {% if current_read == 'read' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    Read
+                </a>
+            </div>
+        </div>
+    </div>
+
+    {% if page_obj %}
+        <div class="card">
+            <div class="list-group list-group-flush">
+                {% for notification in page_obj %}
+                <div class="list-group-item {% if not notification.is_read %}bg-light border-start border-primary border-4{% endif %}"
+                     id="notification-{{ notification.id }}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <span class="badge {{ notification.type_badge_class }}">
+                                    {{ notification.type_icon }} {{ notification.type_display }}
+                                </span>
+                                <a href="{% url 'stocks:stock_detail' symbol=notification.symbol %}"
+                                   class="fw-bold text-decoration-none fs-5">
+                                    {{ notification.symbol }}
+                                </a>
+                                <small class="text-muted">
+                                    {{ notification.created_at|date:"M d, Y g:i A" }}
+                                </small>
+                                {% if not notification.is_read %}
+                                    <span class="badge bg-primary">New</span>
+                                {% endif %}
+                            </div>
+                            <p class="mb-0">{{ notification.message }}</p>
+                        </div>
+                        {% if not notification.is_read %}
+                        <button class="btn btn-sm btn-outline-secondary ms-3 mark-read"
+                                data-id="{{ notification.id }}"
+                                title="Mark as read">
+                            ✓
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        {% if page_obj.has_other_pages %}
+        <nav class="mt-4" aria-label="Notifications pagination">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}&type={{ current_type }}&read={{ current_read }}">
+                        &laquo; Previous
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">&laquo; Previous</span>
+                </li>
+                {% endif %}
+
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                    {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}&type={{ current_type }}&read={{ current_read }}">{{ num }}</a>
+                    </li>
+                    {% elif num == 1 or num == page_obj.paginator.num_pages %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}&type={{ current_type }}&read={{ current_read }}">{{ num }}</a>
+                    </li>
+                    {% elif num == page_obj.number|add:"-3" or num == page_obj.number|add:"3" %}
+                    <li class="page-item disabled">
+                        <span class="page-link">&hellip;</span>
+                    </li>
+                    {% endif %}
+                {% endfor %}
+
+                {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}&type={{ current_type }}&read={{ current_read }}">
+                        Next &raquo;
+                    </a>
+                </li>
+                {% else %}
+                <li class="page-item disabled">
+                    <span class="page-link">Next &raquo;</span>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+
+        <p class="text-muted text-center mt-2">
+            Showing {{ page_obj.start_index }}–{{ page_obj.end_index }} of {{ page_obj.paginator.count }} notifications
+        </p>
+
+    {% else %}
+        <div class="alert alert-info">
+            <h5>No Notifications</h5>
+            <p class="mb-0">
+                Notifications are generated when the Minervini analyzer detects changes for stocks on your
+                <a href="{% url 'stocks:watchlist' %}">watchlist</a>: signal upgrades (Wait → Buy),
+                significant metric changes, and earnings surprises.
+            </p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    // Mark single notification as read
+    document.querySelectorAll('.mark-read').forEach(button => {
+        button.addEventListener('click', async function() {
+            const id = this.dataset.id;
+            const csrfToken = getCookie('csrftoken');
+
+            try {
+                const response = await fetch(`/api/notifications/${id}/read/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    const row = document.getElementById(`notification-${id}`);
+                    row.classList.remove('bg-light', 'border-start', 'border-primary', 'border-4');
+                    // Remove the "New" badge and the mark-read button
+                    const badge = row.querySelector('.badge.bg-primary');
+                    if (badge) badge.remove();
+                    this.remove();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+    });
+
+    // Mark all as read
+    const markAllBtn = document.getElementById('markAllRead');
+    if (markAllBtn) {
+        markAllBtn.addEventListener('click', async function() {
+            const csrfToken = getCookie('csrftoken');
+
+            try {
+                const response = await fetch('/api/notifications/read-all/', {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': csrfToken }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    location.reload();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

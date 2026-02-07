@@ -6,5 +6,6 @@ Analyzes stocks based on Mark Minervini's Trend Template Criteria.
 """
 
 from .analyzer import MinerviniAnalyzer
+from .notifications import NotificationManager
 
-__all__ = ['MinerviniAnalyzer']
+__all__ = ['MinerviniAnalyzer', 'NotificationManager']
