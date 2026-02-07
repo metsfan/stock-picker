@@ -317,7 +317,7 @@ def main():
     print("=" * 80)
     
     # Calculate date range
-    to_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    to_date = datetime.now().strftime('%Y-%m-%d')
     from_date = (datetime.now() - timedelta(days=args.days)).strftime('%Y-%m-%d')
     
     print(f"\nDate range: {from_date} to {to_date} ({args.days} days)")

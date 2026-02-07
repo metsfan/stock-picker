@@ -2439,9 +2439,8 @@ class MinerviniAnalyzer:
 
 def main():
     """Main execution function."""
-    # Use latest available date (today minus 2 days due to source data delay)
-    latest_available = datetime.now() - timedelta(days=2)
-    target_date = latest_available.strftime("%Y-%m-%d")
+    # Use today's date (price data is fetched up to current day)
+    target_date = datetime.now().strftime("%Y-%m-%d")
     
     print("=" * 80)
     print("Minervini Stock Analyzer")
