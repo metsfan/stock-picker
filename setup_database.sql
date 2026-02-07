@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS earnings (
     importance INTEGER,
     date_status VARCHAR(20),
     notes TEXT,
-    benzinga_id VARCHAR(50) UNIQUE,
+    benzinga_id VARCHAR(50),
     last_updated TIMESTAMPTZ,
     fetched_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(ticker, date, fiscal_period, fiscal_year)

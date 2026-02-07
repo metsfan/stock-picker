@@ -148,13 +148,9 @@ def upsert_earnings_record(conn, record):
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
-            ON CONFLICT (benzinga_id) WHERE benzinga_id IS NOT NULL
+            ON CONFLICT (ticker, date, fiscal_period, fiscal_year)
             DO UPDATE SET
-                ticker = EXCLUDED.ticker,
-                date = EXCLUDED.date,
                 time = EXCLUDED.time,
-                fiscal_year = EXCLUDED.fiscal_year,
-                fiscal_period = EXCLUDED.fiscal_period,
                 currency = EXCLUDED.currency,
                 actual_eps = EXCLUDED.actual_eps,
                 estimated_eps = EXCLUDED.estimated_eps,
@@ -172,6 +168,7 @@ def upsert_earnings_record(conn, record):
                 importance = EXCLUDED.importance,
                 date_status = EXCLUDED.date_status,
                 notes = EXCLUDED.notes,
+                benzinga_id = EXCLUDED.benzinga_id,
                 last_updated = EXCLUDED.last_updated,
                 fetched_at = EXCLUDED.fetched_at
         """, (
