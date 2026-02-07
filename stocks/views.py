@@ -72,6 +72,11 @@ class StockListView(SingleTableMixin, ListView):
         elif filter_type == 'stage2_vcp':
             queryset = queryset.filter(stage=2, vcp_detected=True, passes_minervini=True)
         
+        # Apply upcoming earnings filter
+        earnings_filter = self.request.GET.get('earnings', '')
+        if earnings_filter == '1':
+            queryset = queryset.filter(has_upcoming_earnings=True)
+        
         # Apply market cap filter
         cap_filter = self.request.GET.get('cap', 'all')
         if cap_filter in self.CAP_TIERS:
@@ -125,6 +130,7 @@ class StockListView(SingleTableMixin, ListView):
             context['stage2_vcp_count'] = all_stocks.filter(
                 stage=2, vcp_detected=True, passes_minervini=True
             ).count()
+            context['upcoming_earnings_count'] = all_stocks.filter(has_upcoming_earnings=True).count()
             
             # Market cap tier counts
             context['cap_mega_count'] = all_stocks.filter(market_cap__gte=200_000_000_000).count()
@@ -135,6 +141,7 @@ class StockListView(SingleTableMixin, ListView):
         
         context['current_filter'] = self.request.GET.get('filter', 'all')
         context['current_cap'] = self.request.GET.get('cap', 'all')
+        context['current_earnings'] = self.request.GET.get('earnings', '')
         
         return context
 

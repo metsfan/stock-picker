@@ -22,9 +22,14 @@
 
     <div class="d-flex align-items-center mb-4">
         <h1 class="mb-0 me-3">{{ symbol }}</h1>
-        <button id="watchlistBtn" class="btn btn-outline-warning" title="Add to Watchlist">
+        <button id="watchlistBtn" class="btn btn-outline-warning me-2" title="Add to Watchlist">
             <span id="watchlistIcon">☆</span> Watchlist
         </button>
+        {% if metrics.has_upcoming_earnings and metrics.days_until_earnings is not None %}
+        <span class="badge bg-{% if metrics.days_until_earnings <= 7 %}warning text-dark{% else %}info{% endif %} fs-6">
+            Earnings in {{ metrics.days_until_earnings }} day{{ metrics.days_until_earnings|pluralize }}
+        </span>
+        {% endif %}
     </div>
 
     {% if ticker_details %}

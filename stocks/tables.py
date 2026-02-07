@@ -28,6 +28,7 @@ class StockTable(tables.Table):
     is_52w_high = tables.BooleanColumn(verbose_name='New High', yesno='★,')
     avg_dollar_volume = tables.Column(verbose_name='$Vol')
     percent_from_52w_high = tables.Column(verbose_name='From High')
+    has_upcoming_earnings = tables.Column(verbose_name='Earnings', orderable=True)
     
     class Meta:
         model = MinerviniMetrics
@@ -54,6 +55,7 @@ class StockTable(tables.Table):
             'is_52w_high',
             'avg_dollar_volume',
             'percent_from_52w_high',
+            'has_upcoming_earnings',
         )
         attrs = {
             'class': 'table table-striped table-hover',
@@ -230,3 +232,15 @@ class StockTable(tables.Table):
             else:
                 return mark_safe(f'<span class="text-warning">${vol_m:.1f}M</span>')
         return '-'
+    
+    def render_has_upcoming_earnings(self, value, record):
+        """Render upcoming earnings indicator with days until earnings"""
+        if value:
+            days = record.days_until_earnings
+            if days is not None:
+                if days <= 7:
+                    return mark_safe(f'<span class="badge bg-warning text-dark">{days}d</span>')
+                else:
+                    return mark_safe(f'<span class="badge bg-info">{days}d</span>')
+            return mark_safe('<span class="badge bg-info">Soon</span>')
+        return ''
