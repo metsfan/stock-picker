@@ -17,41 +17,63 @@
             <div class="col-12">
                 <div class="btn-toolbar flex-wrap gap-2" role="toolbar">
                     <div class="btn-group me-2" role="group">
-                        <a href="?filter=all" class="btn btn-{% if current_filter == 'all' %}primary{% else %}outline-primary{% endif %}">
+                        <a href="?filter=all&cap={{ current_cap }}" class="btn btn-{% if current_filter == 'all' %}primary{% else %}outline-primary{% endif %}">
                             All Stocks ({{ total_stocks }})
                         </a>
-                        <a href="?filter=buy" class="btn btn-{% if current_filter == 'buy' %}success{% else %}outline-success{% endif %}">
+                        <a href="?filter=buy&cap={{ current_cap }}" class="btn btn-{% if current_filter == 'buy' %}success{% else %}outline-success{% endif %}">
                             🟢 Buy ({{ buy_count }})
                         </a>
-                        <a href="?filter=buy_wait" class="btn btn-{% if current_filter == 'buy_wait' %}warning{% else %}outline-warning{% endif %} {% if current_filter == 'buy_wait' %}text-dark{% endif %}">
+                        <a href="?filter=buy_wait&cap={{ current_cap }}" class="btn btn-{% if current_filter == 'buy_wait' %}warning{% else %}outline-warning{% endif %} {% if current_filter == 'buy_wait' %}text-dark{% endif %}">
                             🟢🟡 Buy + Wait ({{ buy_wait_count }})
                         </a>
-                        <a href="?filter=passing" class="btn btn-{% if current_filter == 'passing' %}info{% else %}outline-info{% endif %}">
+                        <a href="?filter=passing&cap={{ current_cap }}" class="btn btn-{% if current_filter == 'passing' %}info{% else %}outline-info{% endif %}">
                             Passing ({{ passing_count }})
                         </a>
-                        <a href="?filter=vcp" class="btn btn-{% if current_filter == 'vcp' %}secondary{% else %}outline-secondary{% endif %}">
+                        <a href="?filter=vcp&cap={{ current_cap }}" class="btn btn-{% if current_filter == 'vcp' %}secondary{% else %}outline-secondary{% endif %}">
                             VCP ({{ vcp_count }})
                         </a>
-                        <a href="?filter=stage2" class="btn btn-{% if current_filter == 'stage2' %}secondary{% else %}outline-secondary{% endif %}">
+                        <a href="?filter=stage2&cap={{ current_cap }}" class="btn btn-{% if current_filter == 'stage2' %}secondary{% else %}outline-secondary{% endif %}">
                             Stage 2 ({{ stage2_count }})
                         </a>
-                        <a href="?filter=stage2_vcp" class="btn btn-{% if current_filter == 'stage2_vcp' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter=stage2_vcp&cap={{ current_cap }}" class="btn btn-{% if current_filter == 'stage2_vcp' %}dark{% else %}outline-dark{% endif %}">
                             Best Setups ({{ stage2_vcp_count }})
                         </a>
                     </div>
                     
+                    <div class="btn-group me-2" role="group">
+                        <a href="?filter={{ current_filter }}&cap=all" class="btn btn-sm btn-{% if current_cap == 'all' %}dark{% else %}outline-dark{% endif %}">
+                            All Caps
+                        </a>
+                        <a href="?filter={{ current_filter }}&cap=mega" class="btn btn-sm btn-{% if current_cap == 'mega' %}dark{% else %}outline-dark{% endif %}">
+                            Mega ({{ cap_mega_count }})
+                        </a>
+                        <a href="?filter={{ current_filter }}&cap=large" class="btn btn-sm btn-{% if current_cap == 'large' %}dark{% else %}outline-dark{% endif %}">
+                            Large ({{ cap_large_count }})
+                        </a>
+                        <a href="?filter={{ current_filter }}&cap=mid" class="btn btn-sm btn-{% if current_cap == 'mid' %}dark{% else %}outline-dark{% endif %}">
+                            Mid ({{ cap_mid_count }})
+                        </a>
+                        <a href="?filter={{ current_filter }}&cap=small" class="btn btn-sm btn-{% if current_cap == 'small' %}dark{% else %}outline-dark{% endif %}">
+                            Small ({{ cap_small_count }})
+                        </a>
+                        <a href="?filter={{ current_filter }}&cap=micro" class="btn btn-sm btn-{% if current_cap == 'micro' %}dark{% else %}outline-dark{% endif %}">
+                            Micro ({{ cap_micro_count }})
+                        </a>
+                    </div>
+
                     <div class="btn-group" role="group">
                         <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                             Sort By
                         </button>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}">Signal &amp; RS (Default)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-relative_strength">Relative Strength (High to Low)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-risk_reward_ratio">Risk/Reward (Best First)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-vcp_score">VCP Score (High to Low)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-return_3m">3M Return (High to Low)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=symbol">Symbol (A-Z)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-close_price">Price (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}">Signal &amp; RS (Default)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}&sort=-relative_strength">Relative Strength (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}&sort=-risk_reward_ratio">Risk/Reward (Best First)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}&sort=-vcp_score">VCP Score (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}&sort=-return_3m">3M Return (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}&sort=symbol">Symbol (A-Z)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}&sort=-close_price">Price (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}&sort=-market_cap">Market Cap (High to Low)</a></li>
                         </ul>
                     </div>
                 </div>

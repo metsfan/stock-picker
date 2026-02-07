@@ -27,8 +27,19 @@ class StockListView(SingleTableMixin, ListView):
     template_name = 'stocks/stock_list.html'
     paginate_by = 50
     
+    # Market cap tier boundaries (matches minervini.py classify_market_cap_tier)
+    CAP_TIERS = {
+        'mega':  (200_000_000_000, None),           # > $200B
+        'large': (10_000_000_000, 200_000_000_000),  # $10B - $200B
+        'mid':   (2_000_000_000, 10_000_000_000),    # $2B - $10B
+        'small': (300_000_000, 2_000_000_000),       # $300M - $2B
+        'micro': (None, 300_000_000),                # < $300M
+    }
+
     def get_queryset(self):
         """Get queryset with filters applied"""
+        from django.db.models import Case, When, Value, IntegerField, Subquery, OuterRef, BigIntegerField
+
         # Get latest date with data
         latest_date = MinerviniMetrics.objects.values_list('date', flat=True).order_by('-date').first()
         
@@ -37,7 +48,15 @@ class StockListView(SingleTableMixin, ListView):
         
         queryset = MinerviniMetrics.objects.filter(date=latest_date)
         
-        # Apply filters from request
+        # Annotate market_cap from TickerDetails for filtering and sorting
+        queryset = queryset.annotate(
+            market_cap=Subquery(
+                TickerDetails.objects.filter(symbol=OuterRef('symbol')).values('market_cap')[:1],
+                output_field=BigIntegerField()
+            )
+        )
+        
+        # Apply signal/criteria filter
         filter_type = self.request.GET.get('filter', 'all')
         
         if filter_type == 'passing':
@@ -53,13 +72,21 @@ class StockListView(SingleTableMixin, ListView):
         elif filter_type == 'stage2_vcp':
             queryset = queryset.filter(stage=2, vcp_detected=True, passes_minervini=True)
         
+        # Apply market cap filter
+        cap_filter = self.request.GET.get('cap', 'all')
+        if cap_filter in self.CAP_TIERS:
+            low, high = self.CAP_TIERS[cap_filter]
+            if low is not None:
+                queryset = queryset.filter(market_cap__gte=low)
+            if high is not None:
+                queryset = queryset.filter(market_cap__lt=high)
+        
         # Sort by filter parameter (default: BUY first, then by RS descending)
         sort_by = self.request.GET.get('sort', '')
         if sort_by:
             queryset = queryset.order_by(sort_by)
         else:
             # Default sort: signal priority (BUY > WAIT > PASS), then RS descending
-            from django.db.models import Case, When, Value, IntegerField
             queryset = queryset.annotate(
                 signal_priority=Case(
                     When(signal='BUY', then=Value(1)),
@@ -73,6 +100,8 @@ class StockListView(SingleTableMixin, ListView):
         return queryset
     
     def get_context_data(self, **kwargs):
+        from django.db.models import Subquery, OuterRef, BigIntegerField
+
         context = super().get_context_data(**kwargs)
         
         # Get latest date
@@ -81,7 +110,12 @@ class StockListView(SingleTableMixin, ListView):
         
         # Get filter stats
         if latest_date:
-            all_stocks = MinerviniMetrics.objects.filter(date=latest_date)
+            all_stocks = MinerviniMetrics.objects.filter(date=latest_date).annotate(
+                market_cap=Subquery(
+                    TickerDetails.objects.filter(symbol=OuterRef('symbol')).values('market_cap')[:1],
+                    output_field=BigIntegerField()
+                )
+            )
             context['total_stocks'] = all_stocks.count()
             context['buy_count'] = all_stocks.filter(signal='BUY').count()
             context['buy_wait_count'] = all_stocks.filter(signal__in=['BUY', 'WAIT']).count()
@@ -91,8 +125,16 @@ class StockListView(SingleTableMixin, ListView):
             context['stage2_vcp_count'] = all_stocks.filter(
                 stage=2, vcp_detected=True, passes_minervini=True
             ).count()
+            
+            # Market cap tier counts
+            context['cap_mega_count'] = all_stocks.filter(market_cap__gte=200_000_000_000).count()
+            context['cap_large_count'] = all_stocks.filter(market_cap__gte=10_000_000_000, market_cap__lt=200_000_000_000).count()
+            context['cap_mid_count'] = all_stocks.filter(market_cap__gte=2_000_000_000, market_cap__lt=10_000_000_000).count()
+            context['cap_small_count'] = all_stocks.filter(market_cap__gte=300_000_000, market_cap__lt=2_000_000_000).count()
+            context['cap_micro_count'] = all_stocks.filter(market_cap__lt=300_000_000).count()
         
         context['current_filter'] = self.request.GET.get('filter', 'all')
+        context['current_cap'] = self.request.GET.get('cap', 'all')
         
         return context
 

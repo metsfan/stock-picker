@@ -47,3 +47,6 @@ config.py
 # OS
 .DS_Store
 Thumbs.db
+
+.htpasswd
+.python-version
