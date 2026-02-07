@@ -453,9 +453,6 @@ def main():
             errors += len(batch)
             continue
     
-    # Close database connection
-    conn.close()
-    
     # Print summary
     print("\n" + "=" * 80)
     print("Summary:")
