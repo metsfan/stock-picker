@@ -194,7 +194,7 @@ class StockTable(tables.Table):
     
     def render_criteria_passed(self, value):
         if value is not None:
-            return f'{value}/8'
+            return f'{value}/9'
         return '-'
     
     def render_industry_rs(self, value):

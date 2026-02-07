@@ -125,7 +125,7 @@
                             </h5>
                         </div>
                         <div class="d-flex align-items-center gap-3">
-                            <span class="text-muted small">Stage {{ metrics.stage }} ({{ metrics.stage_name }}) &middot; RS {{ metrics.relative_strength|floatformat:0 }} &middot; {{ metrics.criteria_passed }}/8 Criteria</span>
+                            <span class="text-muted small">Stage {{ metrics.stage }} ({{ metrics.stage_name }}) &middot; RS {{ metrics.relative_strength|floatformat:0 }} &middot; {{ metrics.criteria_passed }}/9 Criteria</span>
                         </div>
                     </div>
                 </div>
@@ -417,9 +417,9 @@
                                 <td><strong>Minervini Criteria:</strong></td>
                                 <td class="text-end">
                                     {% if metrics.passes_minervini %}
-                                        <span class="badge bg-success">✓ PASSED ({{ metrics.criteria_passed }}/8)</span>
+                                        <span class="badge bg-success">✓ PASSED ({{ metrics.criteria_passed }}/9)</span>
                                     {% else %}
-                                        <span class="badge bg-danger">{{ metrics.criteria_passed }}/8</span>
+                                        <span class="badge bg-danger">{{ metrics.criteria_passed }}/9</span>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -886,16 +886,16 @@
             <div class="col-12">
                 <div class="card">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">✓ Minervini 8-Point Trend Template</h5>
+                        <h5 class="mb-0">✓ Minervini Trend Template</h5>
                         <small>Reference: "Trade Like a Stock Market Wizard" by Mark Minervini</small>
                     </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-4">
-                                <h6>Price Position (Criteria 1-2)</h6>
+                                <h6>Price Position (#1) &amp; MA Structure (#2)</h6>
                                 <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>1. Price > 150-day MA</span>
+                                        <span>1a. Price > 150-day MA</span>
                                         {% if metrics.close_price > metrics.ma_150 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
@@ -903,27 +903,24 @@
                                         {% endif %}
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>2. Price > 200-day MA</span>
+                                        <span>1b. Price > 200-day MA</span>
                                         {% if metrics.close_price > metrics.ma_200 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
                                         {% endif %}
                                     </li>
-                                </ul>
-                                <h6 class="mt-3">MA Trends (Criteria 3-4)</h6>
-                                <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>3. 150-day MA Trending Up</span>
-                                        {% if metrics.ma_150_trend_20d and metrics.ma_150_trend_20d > 0 %}
+                                        <span>2. 150-day MA > 200-day MA</span>
+                                        {% if metrics.ma_150 > metrics.ma_200 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
                                         {% endif %}
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>4. 200-day MA Trending Up</span>
-                                        {% if metrics.ma_200_trend_20d > 0 %}
+                                        <span>3. 200-day MA Trending Up</span>
+                                        {% if metrics.ma_200_trend_20d and metrics.ma_200_trend_20d > 0 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
@@ -932,10 +929,10 @@
                                 </ul>
                             </div>
                             <div class="col-md-4">
-                                <h6>MA Alignment (Criteria 5-6)</h6>
+                                <h6>MA Alignment (#4) &amp; Price Strength (#5)</h6>
                                 <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>5. 50-day MA > 150-day MA</span>
+                                        <span>4a. 50-day MA > 150-day MA</span>
                                         {% if metrics.ma_50 > metrics.ma_150 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
@@ -943,8 +940,16 @@
                                         {% endif %}
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>6. 50-day MA > 200-day MA</span>
+                                        <span>4b. 50-day MA > 200-day MA</span>
                                         {% if metrics.ma_50 > metrics.ma_200 %}
+                                            <span class="badge bg-success">✓</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">✗</span>
+                                        {% endif %}
+                                    </li>
+                                    <li class="list-group-item d-flex justify-content-between">
+                                        <span>5. Price > 50-day MA</span>
+                                        {% if metrics.close_price > metrics.ma_50 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
@@ -953,10 +958,10 @@
                                 </ul>
                             </div>
                             <div class="col-md-4">
-                                <h6>52-Week Range (Criteria 7-8)</h6>
+                                <h6>52-Week Range (#6-7) &amp; RS (#8)</h6>
                                 <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>7. 30%+ Above 52w Low</span>
+                                        <span>6. 30%+ Above 52w Low</span>
                                         {% if metrics.percent_from_52w_low and metrics.percent_from_52w_low >= 30 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
@@ -964,18 +969,15 @@
                                         {% endif %}
                                     </li>
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>8. Within 25% of 52w High</span>
+                                        <span>7. Within 25% of 52w High</span>
                                         {% if metrics.percent_from_52w_high >= -25 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
                                             <span class="badge bg-danger">✗</span>
                                         {% endif %}
                                     </li>
-                                </ul>
-                                <h6 class="mt-3">RS Filter (Additional)</h6>
-                                <ul class="list-group list-group-flush">
                                     <li class="list-group-item d-flex justify-content-between">
-                                        <span>RS Rating ≥ 70</span>
+                                        <span>8. RS Rating ≥ 70</span>
                                         {% if metrics.relative_strength >= 70 %}
                                             <span class="badge bg-success">✓</span>
                                         {% else %}
@@ -988,9 +990,9 @@
 
                         <div class="mt-3 p-3 {% if metrics.passes_minervini %}bg-success{% else %}bg-light{% endif %} text-{% if metrics.passes_minervini %}white{% else %}dark{% endif %} text-center rounded">
                             {% if metrics.passes_minervini %}
-                                <h4 class="mb-0">✓ PASSES ALL 8 CRITERIA + RS FILTER</h4>
+                                <h4 class="mb-0">✓ PASSES ALL MINERVINI CRITERIA</h4>
                             {% else %}
-                                <h5 class="mb-0">{{ metrics.criteria_passed }}/8 Criteria Passed</h5>
+                                <h5 class="mb-0">{{ metrics.criteria_passed }}/9 Criteria Passed</h5>
                                 {% if metrics.criteria_failed %}
                                     <small class="text-muted">Failed: {{ metrics.criteria_failed }}</small>
                                 {% endif %}

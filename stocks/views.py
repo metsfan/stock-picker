@@ -346,7 +346,7 @@ CURRENT PRICE & STAGE:
 - Price: ${metrics.close_price}
 - Stage: {metrics.stage} ({metrics.stage_name})
 - Relative Strength (Percentile Rank): {metrics.relative_strength}/99
-- Passes Minervini 8-Point Criteria: {'YES' if metrics.passes_minervini else 'NO'} ({metrics.criteria_passed}/8 criteria + RS filter)
+- Passes Minervini 9-Point Criteria: {'YES' if metrics.passes_minervini else 'NO'} ({metrics.criteria_passed}/9 criteria + RS filter)
 
 MOVING AVERAGES:
 - 50-day MA: ${metrics.ma_50}

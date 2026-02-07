@@ -2,19 +2,20 @@
 """
 Minervini Stock Analyzer (Enhanced with Company Fundamentals)
 
-Analyzes stocks based on Mark Minervini's 8 Trend Template Criteria:
+Analyzes stocks based on Mark Minervini's Trend Template Criteria:
 (Reference: "Trade Like a Stock Market Wizard" by Mark Minervini)
 
-1. Current price above 150-day MA
-2. Current price above 200-day MA  
-3. 150-day MA trending upward (positive slope)
-4. 200-day MA trending upward for at least 1 month
-5. 50-day MA above 150-day MA
-6. 50-day MA above 200-day MA
-7. Price at least 30% above 52-week low
-8. Price within 25% of 52-week high
+Book Criterion #1: Current price above both 150-day and 200-day MA
+Book Criterion #2: 150-day MA above 200-day MA
+Book Criterion #3: 200-day MA trending upward for at least 1 month
+Book Criterion #4: 50-day MA above both 150-day and 200-day MA
+Book Criterion #5: Current price above 50-day MA
+Book Criterion #6: Price at least 30% above 52-week low
+Book Criterion #7: Price within 25% of 52-week high
+Book Criterion #8: RS Rating >= 70 (IBD-style percentile ranking)
 
-Additional Filter: Relative Strength (RS) Rating >= 70 (IBD-style percentile ranking)
+These 8 book criteria expand to 9 discrete checks + RS filter (since #1 and #4
+each test two MA relationships).
 
 ENHANCED FEATURES (using ticker_details table):
 - Market Cap Filtering: Automatically excludes stocks < $100M (too illiquid)
@@ -1738,7 +1739,7 @@ class MinerviniAnalyzer:
         
         if is_buy:
             signal = 'BUY'
-            reasons.append('All 8 trend criteria pass')
+            reasons.append('All 9 trend criteria pass')
             reasons.append('Stage 2 uptrend confirmed')
             reasons.append(f'VCP pattern (score {vcp_score:.0f})')
             if vol_ratio and vol_ratio >= 1.5:
@@ -1750,12 +1751,12 @@ class MinerviniAnalyzer:
         
         # === WAIT CONDITIONS ===
         # Setup forming or conditions almost met -- monitor for entry
-        elif stage in (1, 2) and criteria_count >= 6:
+        elif stage in (1, 2) and criteria_count >= 7:
             signal = 'WAIT'
             
             if not passes:
                 failed = metrics.get('criteria_failed', '')
-                reasons.append(f'{criteria_count}/8 criteria met ({failed})')
+                reasons.append(f'{criteria_count}/9 criteria met ({failed})')
             
             if vcp_score and 30 <= vcp_score < 50:
                 reasons.append(f'VCP forming (score {vcp_score:.0f})')
@@ -1784,8 +1785,8 @@ class MinerviniAnalyzer:
         else:
             if stage in (3, 4):
                 reasons.append(f'Stage {stage} ({"topping/distribution" if stage == 3 else "declining"})')
-            if criteria_count < 6:
-                reasons.append(f'Only {criteria_count}/8 trend criteria met')
+            if criteria_count < 7:
+                reasons.append(f'Only {criteria_count}/9 trend criteria met')
             if rs is not None and rs < 70:
                 reasons.append(f'Weak relative strength ({rs:.0f})')
             if passes_earnings is False:
@@ -1897,43 +1898,57 @@ class MinerviniAnalyzer:
         percent_from_52w_high = ((close_price - week_52_high) / week_52_high) * 100
         percent_from_52w_low = ((close_price - week_52_low) / week_52_low) * 100  # NEW
         
-        # Evaluate Minervini's 8 Trend Template Criteria + RS filter
+        # Evaluate Minervini's Trend Template Criteria + RS filter
         # Reference: "Trade Like a Stock Market Wizard" by Mark Minervini
+        #
+        # Book criteria mapped to checks (some book criteria expand to 2 checks):
+        # Book #1: Price above both 150-day and 200-day MA → checks 1, 2
+        # Book #2: 150-day MA above 200-day MA → check 3
+        # Book #3: 200-day MA trending up at least 1 month → check 4
+        # Book #4: 50-day MA above both 150-day and 200-day MA → checks 5, 6
+        # Book #5: Price above 50-day MA → check 7
+        # Book #6: Price at least 30% above 52-week low → check 8
+        # Book #7: Price within 25% of 52-week high → check 9
+        # Book #8: RS >= 70 → separate RS filter
         criteria = {
-            # Criterion 1: Current price above 150-day MA
+            # Book #1a: Current price above 150-day MA
             'price_above_150ma': close_price > ma_150,
             
-            # Criterion 2: Current price above 200-day MA
+            # Book #1b: Current price above 200-day MA
             'price_above_200ma': close_price > ma_200,
             
-            # Criterion 3: 150-day MA trending upward (slope check)
-            'ma_150_trending_up': ma_150_trend is not None and ma_150_trend > 0,
+            # Book #2: 150-day MA above 200-day MA (confirmed uptrend structure)
+            'ma_150_above_200': ma_150 > ma_200,
             
-            # Criterion 4: 200-day MA trending upward for at least 1 month
+            # Book #3: 200-day MA trending upward for at least 1 month
             'ma_200_trending_up': ma_200_trend is not None and ma_200_trend > 0,
             
-            # Criterion 5: 50-day MA above 150-day MA
+            # Book #4a: 50-day MA above 150-day MA
             'ma_50_above_150': ma_50 > ma_150,
             
-            # Criterion 6: 50-day MA above 200-day MA
+            # Book #4b: 50-day MA above 200-day MA
             'ma_50_above_200': ma_50 > ma_200,
             
-            # Criterion 7: Price at least 30% above 52-week low
+            # Book #5: Price above 50-day MA (short-term strength)
+            'price_above_50ma': close_price > ma_50,
+            
+            # Book #6: Price at least 30% above 52-week low
             'above_30pct_52w_low': percent_from_52w_low >= 30,
             
-            # Criterion 8: Price within 25% of 52-week high
+            # Book #7: Price within 25% of 52-week high
             'within_25pct_of_high': percent_from_52w_high >= -25,
         }
         
         # Additional filter: RS Rating >= 70 (Minervini recommends 80+ preferred)
+        # This corresponds to Book criterion #8
         rs_filter = {
             'rs_above_70': relative_strength is not None and relative_strength >= 70
         }
         
-        # Count criteria passed (8 core criteria)
+        # Count criteria passed (9 core checks)
         criteria_passed = sum(criteria.values())
         
-        # Stock passes if ALL 8 criteria met AND RS filter passes
+        # Stock passes if ALL 9 criteria met AND RS filter passes
         passes_all_criteria = all(criteria.values())
         passes_rs = all(rs_filter.values())
         passes_all = passes_all_criteria and passes_rs
@@ -2328,7 +2343,7 @@ class MinerviniAnalyzer:
                             quality = "⭐" if metrics.get('_institutional_quality') else ""
                             cap_info = f" [{tier}{quality}]"
                         
-                        print(f"  {sig_icon} {symbol}: {sig} - Stage {metrics['stage']} ({metrics['criteria_passed']}/8, RS={metrics['relative_strength']:.0f}){vcp_info}{price_info}{cap_info}")
+                        print(f"  {sig_icon} {symbol}: {sig} - Stage {metrics['stage']} ({metrics['criteria_passed']}/9, RS={metrics['relative_strength']:.0f}){vcp_info}{price_info}{cap_info}")
                 else:
                     skipped += 1
                 
