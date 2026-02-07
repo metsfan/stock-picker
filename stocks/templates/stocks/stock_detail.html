@@ -162,10 +162,16 @@
                             </div>
                         </div>
                         
-                        <!-- Chart Canvas -->
-                        <div class="chart-container">
+                        <!-- Price Chart Canvas -->
+                        <div class="chart-container mb-2">
                             <canvas id="stockChart"></canvas>
                         </div>
+                        
+                        <!-- Volume Chart Canvas -->
+                        <div class="chart-container-volume">
+                            <canvas id="volumeChart"></canvas>
+                        </div>
+                        
                         <div class="mt-3">
                             <div class="chart-tip">
                                 <span class="chart-tip-icon">💡</span>
@@ -1094,21 +1100,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         pointRadius: 0,
                         pointHoverRadius: 0,
                         yAxisID: 'y',
-                    },
-                    {
-                        label: '📊 Volume',
-                        data: chartData.volumes,
-                        type: 'bar',
-                        backgroundColor: function(context) {
-                            const index = context.dataIndex;
-                            if (index === 0) return 'rgba(99, 102, 241, 0.5)';
-                            const currentPrice = chartData.prices[index];
-                            const previousPrice = chartData.prices[index - 1];
-                            return currentPrice >= previousPrice ? 'rgba(16, 185, 129, 0.5)' : 'rgba(239, 68, 68, 0.5)';
-                        },
-                        yAxisID: 'volume',
-                        barPercentage: 0.9,
-                        categoryPercentage: 1.0,
                     }
                 ]
             },
@@ -1287,19 +1278,200 @@ document.addEventListener('DOMContentLoaded', function() {
                             },
                             padding: 4
                         }
+                    }
+                }
+            }
+        });
+        
+        // Create Volume Chart
+        const volumeCtx = document.getElementById('volumeChart').getContext('2d');
+        const volumeChart = new Chart(volumeCtx, {
+            type: 'line',
+            data: {
+                labels: chartData.dates,
+                datasets: [
+                    {
+                        label: '📊 Volume',
+                        data: chartData.volumes,
+                        borderColor: function(context) {
+                            const index = context.dataIndex;
+                            if (index === 0) return 'rgba(99, 102, 241, 0.8)';
+                            const currentPrice = chartData.prices[index];
+                            const previousPrice = chartData.prices[index - 1];
+                            return currentPrice >= previousPrice ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+                        },
+                        backgroundColor: function(context) {
+                            const index = context.dataIndex;
+                            if (index === 0) return 'rgba(99, 102, 241, 0.2)';
+                            const currentPrice = chartData.prices[index];
+                            const previousPrice = chartData.prices[index - 1];
+                            return currentPrice >= previousPrice ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+                        },
+                        borderWidth: 1.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        segment: {
+                            borderColor: function(ctx) {
+                                const index = ctx.p1DataIndex;
+                                if (index === 0) return 'rgba(99, 102, 241, 0.8)';
+                                const currentPrice = chartData.prices[index];
+                                const previousPrice = chartData.prices[index - 1];
+                                return currentPrice >= previousPrice ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
+                            }
+                        }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: {
+                        left: 5,
+                        right: 5,
+                        top: 5,
+                        bottom: 5
+                    }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        align: 'start',
+                        labels: {
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            padding: 12,
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            font: {
+                                size: window.innerWidth < 768 ? 10 : 12,
+                                family: "'Inter', 'Segoe UI', 'Roboto', sans-serif",
+                                weight: '500'
+                            },
+                            color: '#374151'
+                        }
                     },
-                    volume: {
+                    tooltip: {
+                        enabled: true,
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                        titleColor: '#fff',
+                        titleFont: {
+                            size: 14,
+                            weight: 'bold'
+                        },
+                        bodyColor: '#e5e7eb',
+                        bodyFont: {
+                            size: 13
+                        },
+                        padding: 12,
+                        borderColor: 'rgba(99, 102, 241, 0.3)',
+                        borderWidth: 1,
+                        cornerRadius: 8,
+                        displayColors: true,
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    const value = context.parsed.y;
+                                    if (value >= 1000000000) {
+                                        label += (value / 1000000000).toFixed(2) + 'B';
+                                    } else if (value >= 1000000) {
+                                        label += (value / 1000000).toFixed(2) + 'M';
+                                    } else if (value >= 1000) {
+                                        label += (value / 1000).toFixed(2) + 'K';
+                                    } else {
+                                        label += value.toLocaleString();
+                                    }
+                                }
+                                return label;
+                            },
+                            title: function(tooltipItems) {
+                                return '📅 ' + tooltipItems[0].label;
+                            }
+                        }
+                    },
+                    zoom: {
+                        pan: {
+                            enabled: true,
+                            mode: 'x',
+                            modifierKey: null,
+                            threshold: 5,
+                        },
+                        zoom: {
+                            wheel: {
+                                enabled: true,
+                                speed: 0.1,
+                            },
+                            pinch: {
+                                enabled: true,
+                                speed: 0.1
+                            },
+                            mode: 'x',
+                        },
+                        limits: {
+                            x: {
+                                min: 'original',
+                                max: 'original'
+                            }
+                        }
+                    }
+                },
+                animation: {
+                    duration: 1000,
+                    easing: 'easeInOutQuart',
+                    onComplete: function() {
+                        const canvas = document.getElementById('volumeChart');
+                        canvas.style.opacity = '1';
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: {
+                            display: true,
+                            color: 'rgba(156, 163, 175, 0.1)',
+                            drawBorder: false,
+                            drawTicks: false,
+                        },
+                        border: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        },
+                        ticks: {
+                            maxTicksLimit: window.innerWidth < 768 ? 6 : 12,
+                            maxRotation: 45,
+                            minRotation: 45,
+                            color: '#6b7280',
+                            font: {
+                                size: window.innerWidth < 768 ? 9 : 11,
+                                family: "'Inter', 'Segoe UI', 'Roboto', sans-serif"
+                            },
+                            padding: 4
+                        }
+                    },
+                    y: {
                         type: 'linear',
                         display: true,
-                        position: 'right',
-                        max: function(context) {
-                            // Set max to 3x the average volume for better scaling
-                            const volumes = context.chart.data.datasets[3].data;
-                            const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length;
-                            return avgVolume * 4;
-                        },
+                        position: 'left',
                         grid: {
-                            display: false,
+                            display: true,
+                            color: 'rgba(156, 163, 175, 0.15)',
+                            drawBorder: false,
+                            drawTicks: false,
                         },
                         border: {
                             display: false
@@ -1319,13 +1491,13 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                                 return value;
                             },
-                            color: '#9ca3af',
+                            color: '#6b7280',
                             font: {
-                                size: window.innerWidth < 768 ? 8 : 10,
+                                size: window.innerWidth < 768 ? 9 : 11,
                                 family: "'Inter', 'Segoe UI', 'Roboto', sans-serif"
                             },
                             padding: 4,
-                            maxTicksLimit: 5
+                            maxTicksLimit: 4
                         }
                     }
                 }
@@ -1362,6 +1534,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset Zoom button
         document.getElementById('resetZoom').addEventListener('click', function() {
             stockChart.resetZoom();
+            volumeChart.resetZoom();
         });
         
         // Apply Date Filter button
@@ -1403,10 +1576,15 @@ document.addEventListener('DOMContentLoaded', function() {
             stockChart.data.datasets[0].data = filteredPrices;
             stockChart.data.datasets[1].data = filteredHighs;
             stockChart.data.datasets[2].data = filteredLows;
-            stockChart.data.datasets[3].data = filteredVolumes;
+            
+            volumeChart.data.labels = filteredDates;
+            volumeChart.data.datasets[0].data = filteredVolumes;
+            
             updateChartColors();
             stockChart.resetZoom();
+            volumeChart.resetZoom();
             stockChart.update();
+            volumeChart.update();
         });
         
         // Reset Date Filter button
@@ -1416,7 +1594,9 @@ document.addEventListener('DOMContentLoaded', function() {
             stockChart.data.datasets[0].data = originalData.prices;
             stockChart.data.datasets[1].data = originalData.highs;
             stockChart.data.datasets[2].data = originalData.lows;
-            stockChart.data.datasets[3].data = originalData.volumes;
+            
+            volumeChart.data.labels = originalData.dates;
+            volumeChart.data.datasets[0].data = originalData.volumes;
             
             // Reset date inputs
             startDateInput.value = originalData.dates[0];
@@ -1424,7 +1604,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             updateChartColors();
             stockChart.resetZoom();
+            volumeChart.resetZoom();
             stockChart.update();
+            volumeChart.update();
         });
         
         // Mobile button handlers
@@ -1470,7 +1652,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     stockChart.data.datasets[0].data = originalData.prices;
                     stockChart.data.datasets[1].data = originalData.highs;
                     stockChart.data.datasets[2].data = originalData.lows;
-                    stockChart.data.datasets[3].data = originalData.volumes;
+                    
+                    volumeChart.data.labels = originalData.dates;
+                    volumeChart.data.datasets[0].data = originalData.volumes;
                     
                     startDateInput.value = originalData.dates[0];
                     endDateInput.value = endDate;
@@ -1536,7 +1720,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         stockChart.data.datasets[0].data = filteredPrices;
                         stockChart.data.datasets[1].data = filteredHighs;
                         stockChart.data.datasets[2].data = filteredLows;
-                        stockChart.data.datasets[3].data = filteredVolumes;
+                        
+                        volumeChart.data.labels = filteredDates;
+                        volumeChart.data.datasets[0].data = filteredVolumes;
                         
                         // Update date inputs
                         startDateInput.value = filteredDates[0];
@@ -1564,7 +1750,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 updateChartColors();
                 stockChart.resetZoom();
+                volumeChart.resetZoom();
                 stockChart.update('active');
+                volumeChart.update('active');
             });
         });
     }
