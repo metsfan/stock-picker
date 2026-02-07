@@ -104,14 +104,16 @@ class RelativeStrengthCalculator:
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
 
         # Define quarters for weighted calculation
+        # Each quarter = 63 trading days ≈ 91 calendar days (252 trading days / year ≈ 365 calendar days)
+        # Previous code incorrectly used 63 calendar days per quarter, covering only ~8 months total
         quarters = [
-            ((end_date_obj - timedelta(days=63)).strftime("%Y-%m-%d"), end_date, 0.40),   # Q1: most recent
-            ((end_date_obj - timedelta(days=126)).strftime("%Y-%m-%d"),
-             (end_date_obj - timedelta(days=63)).strftime("%Y-%m-%d"), 0.20),              # Q2
-            ((end_date_obj - timedelta(days=189)).strftime("%Y-%m-%d"),
-             (end_date_obj - timedelta(days=126)).strftime("%Y-%m-%d"), 0.20),             # Q3
-            ((end_date_obj - timedelta(days=252)).strftime("%Y-%m-%d"),
-             (end_date_obj - timedelta(days=189)).strftime("%Y-%m-%d"), 0.20),             # Q4
+            ((end_date_obj - timedelta(days=91)).strftime("%Y-%m-%d"), end_date, 0.40),    # Q1: most recent ~3 months
+            ((end_date_obj - timedelta(days=182)).strftime("%Y-%m-%d"),
+             (end_date_obj - timedelta(days=91)).strftime("%Y-%m-%d"), 0.20),              # Q2: ~3-6 months ago
+            ((end_date_obj - timedelta(days=273)).strftime("%Y-%m-%d"),
+             (end_date_obj - timedelta(days=182)).strftime("%Y-%m-%d"), 0.20),             # Q3: ~6-9 months ago
+            ((end_date_obj - timedelta(days=365)).strftime("%Y-%m-%d"),
+             (end_date_obj - timedelta(days=273)).strftime("%Y-%m-%d"), 0.20),             # Q4: ~9-12 months ago
         ]
 
         # Get all symbols with sufficient data
@@ -143,7 +145,7 @@ class RelativeStrengthCalculator:
 
             if total_weight > 0:
                 # Normalize by actual weight used (in case some quarters missing)
-                performances[symbol] = weighted_perf / total_weight * (0.40 + 0.20 + 0.20 + 0.20)
+                performances[symbol] = weighted_perf / total_weight
 
         cursor.close()
 

@@ -105,21 +105,22 @@ class TechnicalIndicators:
 
     def calculate_ma_200_trend(self, symbol, end_date):
         """
-        Calculate the trend of 200-day MA over the last 20 days.
-        Returns the change in MA over this period.
+        Calculate the trend of 200-day MA over the last ~1 month (30 calendar days).
+        Returns the percentage change in MA over this period.
 
-        Minervini requires 200-day MA trending up for at least 1 month.
+        Minervini requires 200-day MA trending up for at least 1 month
+        (~22 trading days ≈ 30 calendar days).
         """
-        return self.calculate_ma_trend(symbol, end_date, 200, 20)
+        return self.calculate_ma_trend(symbol, end_date, 200, 30)
 
     def calculate_ma_150_trend(self, symbol, end_date):
         """
-        Calculate the trend of 150-day MA over the last 20 days.
-        Returns the change in MA over this period.
+        Calculate the trend of 150-day MA over the last ~1 month (30 calendar days).
+        Returns the percentage change in MA over this period.
 
         Minervini requires 150-day MA trending upward.
         """
-        return self.calculate_ma_trend(symbol, end_date, 150, 20)
+        return self.calculate_ma_trend(symbol, end_date, 150, 30)
 
     def get_52_week_high_low(self, symbol, end_date):
         """Get 52-week high and low for a symbol."""

@@ -119,10 +119,14 @@ class PatternDetector:
             return empty_result
 
         # Check for volatility contraction (each range smaller than previous)
+        # A true VCP requires continuously tightening contractions;
+        # reset the count if a contraction expands beyond the 10% tolerance.
         contraction_count = 1
         for i in range(1, len(contractions)):
             if contractions[i] < contractions[i-1] * 1.1:  # Allow 10% tolerance
                 contraction_count += 1
+            else:
+                contraction_count = 1  # Reset on expansion
 
         # Check for higher lows (bullish sign)
         higher_lows = True
