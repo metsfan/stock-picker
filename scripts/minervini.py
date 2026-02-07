@@ -240,6 +240,49 @@ class MinerviniAnalyzer:
         
         return ((ma_today - ma_trend_start) / ma_trend_start) * 100
     
+    def calculate_ema(self, symbol, end_date, period):
+        """
+        Calculate Exponential Moving Average.
+        
+        EMA gives more weight to recent prices, making it more responsive
+        than SMA. Critical for Minervini's pullback entries and trailing stops.
+        
+        Key levels:
+        - 10-day EMA: First support in a strong uptrend (tight trailing stop)
+        - 21-day EMA: Intermediate trend support (Minervini's key pullback level)
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date to calculate EMA for
+            period: EMA period (e.g., 10, 21)
+            
+        Returns:
+            float: EMA value or None if insufficient data
+        """
+        cursor = self.conn.cursor()
+        # Need extra data for EMA warm-up period
+        cursor.execute("""
+            SELECT close FROM stock_prices
+            WHERE symbol = %s AND date <= %s
+            ORDER BY date DESC
+            LIMIT %s
+        """, (symbol, end_date, period * 3))
+        
+        prices = [float(row[0]) for row in cursor.fetchall()]
+        cursor.close()
+        
+        if len(prices) < period:
+            return None
+        
+        prices.reverse()  # Oldest first for EMA calculation
+        multiplier = 2 / (period + 1)
+        ema = sum(prices[:period]) / period  # Seed with SMA
+        
+        for price in prices[period:]:
+            ema = (price - ema) * multiplier + ema
+        
+        return round(ema, 2)
+    
     def calculate_ma_200_trend(self, symbol, end_date):
         """
         Calculate the trend of 200-day MA over the last 20 days.
@@ -372,7 +415,7 @@ class MinerviniAnalyzer:
                 
                 prices = [float(row[0]) for row in cursor.fetchall()]
                 
-                if len(prices) >= 2:
+                if len(prices) >= 2 and prices[0] != 0:
                     qtr_perf = ((prices[-1] - prices[0]) / prices[0]) * 100
                     weighted_perf += qtr_perf * weight
                     total_weight += weight
@@ -707,6 +750,47 @@ class MinerviniAnalyzer:
         days_since = (end_date_obj - high_date_obj).days
         
         return is_52w_high, days_since
+    
+    def find_recent_swing_low(self, symbol, end_date, lookback=30):
+        """
+        Find the most recent swing low in the price action.
+        
+        A swing low is a day whose low is lower than the 2 days
+        before AND after it (local minimum). Used for pattern-based
+        stop loss placement per Minervini's methodology.
+        
+        Args:
+            symbol: Stock symbol
+            end_date: Date to search from
+            lookback: Number of days to look back (default 30)
+            
+        Returns:
+            float: Most recent swing low price, or None
+        """
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT date, low FROM stock_prices
+            WHERE symbol = %s AND date <= %s
+            ORDER BY date DESC
+            LIMIT %s
+        """, (symbol, end_date, lookback))
+        
+        rows = list(reversed(cursor.fetchall()))  # Oldest first
+        cursor.close()
+        
+        if len(rows) < 5:
+            return None
+        
+        # Walk backward from recent to find the most recent swing low
+        for i in range(len(rows) - 3, 1, -1):
+            low_i = float(rows[i][1])
+            if (low_i < float(rows[i-1][1]) and
+                low_i < float(rows[i-2][1]) and
+                low_i < float(rows[i+1][1]) and
+                low_i < float(rows[i+2][1])):
+                return low_i
+        
+        return None
     
     def calculate_sector_performance(self, date):
         """
@@ -1214,7 +1298,8 @@ class MinerviniAnalyzer:
                 'contraction_count': 0,
                 'latest_contraction_pct': None,
                 'volume_contraction': False,
-                'pivot_price': None
+                'pivot_price': None,
+                'last_contraction_low': None
             }
         
         # Convert to lists
@@ -1236,7 +1321,8 @@ class MinerviniAnalyzer:
                 'contraction_count': 0,
                 'latest_contraction_pct': None,
                 'volume_contraction': False,
-                'pivot_price': None
+                'pivot_price': None,
+                'last_contraction_low': None
             }
         
         # Analyze contractions by dividing period after max high into segments
@@ -1248,7 +1334,8 @@ class MinerviniAnalyzer:
                 'contraction_count': 0,
                 'latest_contraction_pct': None,
                 'volume_contraction': False,
-                'pivot_price': None
+                'pivot_price': None,
+                'last_contraction_low': None
             }
         
         # Divide into segments to find contractions
@@ -1283,7 +1370,8 @@ class MinerviniAnalyzer:
                 'contraction_count': 0,
                 'latest_contraction_pct': None,
                 'volume_contraction': False,
-                'pivot_price': None
+                'pivot_price': None,
+                'last_contraction_low': None
             }
         
         # Check for volatility contraction (each range smaller than previous)
@@ -1355,13 +1443,17 @@ class MinerviniAnalyzer:
         # Determine if VCP is detected (score >= 50 and at least 2 contractions)
         vcp_detected = vcp_score >= 50 and contraction_count >= 2
         
+        # Track the low of the last (tightest) contraction for stop loss placement
+        last_contraction_low = contraction_lows[-1] if contraction_lows else None
+        
         return {
             'vcp_detected': vcp_detected,
             'vcp_score': vcp_score,
             'contraction_count': contraction_count,
             'latest_contraction_pct': latest_contraction_pct,
             'volume_contraction': volume_contraction,
-            'pivot_price': pivot_price
+            'pivot_price': pivot_price,
+            'last_contraction_low': last_contraction_low
         }
     
     def determine_stage(self, close_price, ma_50, ma_150, ma_200, ma_200_trend, 
@@ -1422,6 +1514,316 @@ class MinerviniAnalyzer:
         # Consolidating, MAs converging, preparing for next move
         return 1
     
+    def calculate_entry_range(self, close_price, pivot_price, ema_10, ema_21):
+        """
+        Determine suggested entry price range based on Minervini principles.
+        
+        Two entry strategies:
+        A) Pivot breakout: Buy as price clears pivot on volume
+           Range: [pivot, pivot * 1.05] -- max 5% chase above pivot
+        B) Pullback entry: Buy on pullback to 10-day or 21-day EMA
+           (when already extended above pivot)
+        
+        Args:
+            close_price: Current closing price
+            pivot_price: VCP pivot / breakout price
+            ema_10: 10-day Exponential Moving Average
+            ema_21: 21-day Exponential Moving Average
+            
+        Returns:
+            tuple: (entry_low, entry_high) price range
+        """
+        if not pivot_price:
+            return None, None
+        
+        distance_from_pivot = ((close_price - pivot_price) / pivot_price) * 100
+        
+        if distance_from_pivot > 5:
+            # Already extended above pivot -- suggest pullback entry to EMAs
+            if ema_10 and ema_21:
+                entry_low = min(ema_10, ema_21)
+                entry_high = max(ema_10, ema_21)
+            elif ema_21:
+                entry_low = ema_21 * 0.99
+                entry_high = ema_21 * 1.01
+            elif ema_10:
+                entry_low = ema_10 * 0.99
+                entry_high = ema_10 * 1.01
+            else:
+                entry_low = pivot_price
+                entry_high = pivot_price * 1.05
+        else:
+            # At or near pivot -- breakout entry
+            entry_low = pivot_price
+            entry_high = pivot_price * 1.05
+        
+        return round(entry_low, 2), round(entry_high, 2)
+    
+    def calculate_stop_loss(self, entry_price, atr_14, ema_21, last_contraction_low, swing_low):
+        """
+        Calculate stop loss using the tightest reasonable level from multiple methods.
+        
+        Minervini Stop Loss Methods:
+        1. Maximum loss rule: 7-8% below entry (absolute hard floor)
+        2. ATR-based: Entry - 2x ATR (volatility-adjusted)
+        3. 21-EMA based: Just below 21-day EMA
+        4. VCP contraction low: Below last contraction's low
+        5. Swing low: Below most recent swing low
+        
+        Uses the HIGHEST (tightest) stop, clamped between 3% and 8%.
+        
+        Args:
+            entry_price: Expected entry price
+            atr_14: 14-day Average True Range
+            ema_21: 21-day EMA
+            last_contraction_low: Low of VCP's last contraction
+            swing_low: Most recent swing low
+            
+        Returns:
+            float: Suggested stop loss price
+        """
+        if not entry_price:
+            return None
+        
+        # Method 1: Maximum loss rule (hard floor -- Minervini's absolute max)
+        max_loss_stop = entry_price * 0.92  # 8% max loss
+        
+        stops = [max_loss_stop]
+        
+        # Method 2: ATR-based (2x ATR below entry)
+        if atr_14:
+            atr_stop = entry_price - (2.0 * atr_14)
+            if atr_stop > 0:
+                stops.append(atr_stop)
+        
+        # Method 3: Below 21-day EMA
+        if ema_21 and ema_21 < entry_price:
+            ema_stop = ema_21 * 0.99  # 1% below 21-EMA
+            stops.append(ema_stop)
+        
+        # Method 4: VCP contraction low
+        if last_contraction_low and last_contraction_low < entry_price:
+            stops.append(last_contraction_low * 0.99)  # 1% below contraction low
+        
+        # Method 5: Swing low
+        if swing_low and swing_low < entry_price:
+            stops.append(swing_low * 0.99)  # 1% below swing low
+        
+        # Use the HIGHEST stop (tightest risk)
+        stop = max(stops)
+        
+        # Clamp: don't tighter than 3% (avoid whipsaw from noise)
+        min_stop = entry_price * 0.97
+        if stop > min_stop:
+            stop = min_stop
+        
+        # Clamp: never more than 8% loss (Minervini's absolute max)
+        if stop < max_loss_stop:
+            stop = max_loss_stop
+        
+        return round(stop, 2)
+    
+    def calculate_sell_targets(self, entry_price, stop_loss, ma_200):
+        """
+        Calculate sell/profit targets using Minervini's selling rules.
+        
+        Minervini Profit-Taking Rules:
+        1. Risk-based: Target = Entry + N * Risk (R-multiples)
+           - 2:1 minimum acceptable, 3:1 standard target
+        2. Percentage: Take partial profits at +20-25%
+        3. Climax warning: Price 70%+ above 200-day MA = extremely extended
+        
+        Args:
+            entry_price: Expected entry price
+            stop_loss: Calculated stop loss price
+            ma_200: 200-day moving average
+            
+        Returns:
+            dict: Sell target prices and risk/reward info, or None
+        """
+        if not entry_price or not stop_loss:
+            return None
+        
+        risk = entry_price - stop_loss  # Dollar risk per share
+        
+        if risk <= 0:
+            return None
+        
+        # R-multiple targets
+        target_2r = entry_price + (2.0 * risk)  # 2:1 reward/risk (minimum)
+        target_3r = entry_price + (3.0 * risk)  # 3:1 (standard Minervini)
+        
+        # Percentage-based targets (Minervini's 20-25% rule)
+        target_20pct = entry_price * 1.20  # Partial profit at +20%
+        target_25pct = entry_price * 1.25  # More at +25%
+        
+        # Primary target: lower of 3R and 25% (conservative approach)
+        primary_target = min(target_3r, target_25pct)
+        
+        # Climax/overextension price (warning level)
+        climax_price = ma_200 * 1.70 if ma_200 else None
+        
+        # Risk/reward ratio for primary target
+        risk_reward = round((primary_target - entry_price) / risk, 1) if risk > 0 else None
+        
+        # Risk percentage
+        risk_pct = round((risk / entry_price) * 100, 1)
+        
+        return {
+            'target_conservative': round(target_2r, 2),
+            'target_primary': round(primary_target, 2),
+            'target_aggressive': round(target_25pct, 2),
+            'partial_profit_at': round(target_20pct, 2),
+            'climax_warning_price': round(climax_price, 2) if climax_price else None,
+            'risk_reward_ratio': risk_reward,
+            'risk_percent': risk_pct
+        }
+    
+    def generate_signal(self, metrics):
+        """
+        Generate Buy/Wait/Pass signal with entry range, stop loss, and sell targets
+        based on Mark Minervini's SEPA methodology.
+        
+        BUY:  All conditions favorable for immediate entry.
+              Price at/near pivot, VCP confirmed, strong RS/earnings, no imminent earnings.
+        WAIT: Setup forming but not yet actionable.
+              Monitor for breakout, pullback entry, or earnings resolution.
+        PASS: Avoid -- unfavorable technical or fundamental conditions.
+        
+        Args:
+            metrics: Dict of all calculated metrics for a stock
+            
+        Returns:
+            dict: Signal, reasons, entry range, stop loss, sell targets
+        """
+        close = metrics['close_price']
+        pivot = metrics.get('pivot_price')
+        stage = metrics['stage']
+        rs = metrics.get('relative_strength')
+        vcp = metrics.get('vcp_detected', False)
+        vcp_score = metrics.get('vcp_score', 0) or 0
+        vol_ratio = metrics.get('volume_ratio')
+        passes = metrics['passes_minervini']
+        criteria_count = metrics['criteria_passed']
+        upcoming_earnings = metrics.get('has_upcoming_earnings', False)
+        days_until = metrics.get('days_until_earnings')
+        passes_earnings = metrics.get('passes_earnings')
+        industry_rs = metrics.get('industry_rs')
+        ema_10 = metrics.get('ema_10')
+        ema_21 = metrics.get('ema_21')
+        atr_14 = metrics.get('atr_14')
+        ma_200 = metrics.get('ma_200')
+        last_contraction_low = metrics.get('last_contraction_low')
+        swing_low = metrics.get('swing_low')
+        
+        signal = 'PASS'
+        reasons = []
+        
+        # Calculate distance from pivot
+        distance_from_pivot = None
+        if pivot and pivot > 0:
+            distance_from_pivot = ((close - pivot) / pivot) * 100
+        
+        # === BUY CONDITIONS ===
+        # All technical criteria pass, proper setup confirmed, actionable entry
+        is_buy = (
+            passes and
+            stage == 2 and
+            vcp and vcp_score >= 50 and
+            rs is not None and rs >= 80 and
+            distance_from_pivot is not None and -2 <= distance_from_pivot <= 5 and
+            not (upcoming_earnings and days_until is not None and days_until <= 14) and
+            passes_earnings is not False
+        )
+        
+        if is_buy:
+            signal = 'BUY'
+            reasons.append('All 8 trend criteria pass')
+            reasons.append('Stage 2 uptrend confirmed')
+            reasons.append(f'VCP pattern (score {vcp_score:.0f})')
+            if vol_ratio and vol_ratio >= 1.5:
+                reasons.append(f'Above-avg volume ({vol_ratio:.1f}x)')
+            if metrics.get('earnings_acceleration'):
+                reasons.append('Earnings accelerating')
+            if industry_rs and industry_rs >= 60:
+                reasons.append(f'Strong sector (RS {industry_rs:.0f})')
+        
+        # === WAIT CONDITIONS ===
+        # Setup forming or conditions almost met -- monitor for entry
+        elif stage in (1, 2) and criteria_count >= 6:
+            signal = 'WAIT'
+            
+            if not passes:
+                failed = metrics.get('criteria_failed', '')
+                reasons.append(f'{criteria_count}/8 criteria met ({failed})')
+            
+            if vcp_score and 30 <= vcp_score < 50:
+                reasons.append(f'VCP forming (score {vcp_score:.0f})')
+            elif not vcp:
+                reasons.append('No VCP pattern yet')
+            
+            if distance_from_pivot is not None:
+                if distance_from_pivot < -5:
+                    reasons.append(f'Price {abs(distance_from_pivot):.1f}% below pivot -- wait for breakout')
+                elif distance_from_pivot > 5:
+                    reasons.append(f'Extended {distance_from_pivot:.1f}% above pivot -- wait for pullback')
+            
+            if upcoming_earnings and days_until is not None and days_until <= 14:
+                reasons.append(f'Earnings in {days_until} days -- wait')
+            
+            if rs is not None and 70 <= rs < 80:
+                reasons.append(f'RS adequate ({rs:.0f}) but below preferred 80+')
+            
+            if passes_earnings is False:
+                reasons.append('Earnings criteria not met -- watch for improvement')
+            
+            if not reasons:
+                reasons.append('Setup forming -- monitor for confirmation')
+        
+        # === PASS CONDITIONS ===
+        else:
+            if stage in (3, 4):
+                reasons.append(f'Stage {stage} ({"topping/distribution" if stage == 3 else "declining"})')
+            if criteria_count < 6:
+                reasons.append(f'Only {criteria_count}/8 trend criteria met')
+            if rs is not None and rs < 70:
+                reasons.append(f'Weak relative strength ({rs:.0f})')
+            if passes_earnings is False:
+                reasons.append('Fails earnings criteria')
+            if not reasons:
+                reasons.append('Does not meet Minervini setup requirements')
+        
+        # === CALCULATE PRICE LEVELS for BUY and WAIT ===
+        entry_low = entry_high = stop_loss = None
+        sell_targets = None
+        
+        if signal in ('BUY', 'WAIT') and pivot:
+            entry_low, entry_high = self.calculate_entry_range(
+                close, pivot, ema_10, ema_21
+            )
+            
+            # Use entry_low as reference for stop/target calculations
+            reference_entry = entry_low if entry_low else pivot
+            
+            stop_loss = self.calculate_stop_loss(
+                reference_entry, atr_14, ema_21,
+                last_contraction_low, swing_low
+            )
+            
+            if stop_loss:
+                sell_targets = self.calculate_sell_targets(
+                    reference_entry, stop_loss, ma_200
+                )
+        
+        return {
+            'signal': signal,
+            'reasons': reasons,
+            'entry_low': entry_low,
+            'entry_high': entry_high,
+            'stop_loss': stop_loss,
+            'sell_targets': sell_targets,
+        }
+    
     def evaluate_minervini_criteria(self, symbol, date):
         """
         Evaluate a stock against Minervini's trend template.
@@ -1476,6 +1878,13 @@ class MinerviniAnalyzer:
         atr_14, atr_percent = self.calculate_atr(symbol, date)
         is_52w_high, days_since_52w_high = self.calculate_new_high_metrics(symbol, date)
         industry_rs = self.get_industry_rs(symbol, date)
+        
+        # Calculate short-term EMAs for entry/stop calculations
+        ema_10 = self.calculate_ema(symbol, date, 10)
+        ema_21 = self.calculate_ema(symbol, date, 21)
+        
+        # Find recent swing low for pattern-based stop loss
+        swing_low = self.find_recent_swing_low(symbol, date)
         
         # Evaluate earnings quality (fundamental analysis)
         earnings_quality = self.evaluate_earnings_quality(symbol, date)
@@ -1621,13 +2030,13 @@ class MinerviniAnalyzer:
             'week_52_high': week_52_high,
             'week_52_low': week_52_low,
             'percent_from_52w_high': percent_from_52w_high,
-            'percent_from_52w_low': percent_from_52w_low,  # NEW: for 30% above low criterion
-            'ma_150_trend_20d': ma_150_trend,  # NEW: 150-day MA trend
+            'percent_from_52w_low': percent_from_52w_low,
+            'ma_150_trend_20d': ma_150_trend,
             'ma_200_trend_20d': ma_200_trend,
             'relative_strength': relative_strength,
             'stage': stage,
             'passes_minervini': passes_all,
-            'criteria_passed': criteria_passed,  # Now counts 8 core criteria
+            'criteria_passed': criteria_passed,
             'criteria_failed': ','.join(failed_criteria),
             # VCP metrics
             'vcp_detected': vcp_data['vcp_detected'],
@@ -1636,6 +2045,11 @@ class MinerviniAnalyzer:
             'latest_contraction_pct': vcp_data['latest_contraction_pct'],
             'volume_contraction': vcp_data['volume_contraction'],
             'pivot_price': vcp_data['pivot_price'],
+            'last_contraction_low': vcp_data['last_contraction_low'],
+            # Short-term EMAs (for entry/stop calculations)
+            'ema_10': ema_10,
+            'ema_21': ema_21,
+            'swing_low': swing_low,
             # Enhanced metrics
             'avg_dollar_volume': avg_dollar_volume,
             'volume_ratio': volume_ratio,
@@ -1666,6 +2080,31 @@ class MinerviniAnalyzer:
             '_earnings_issues': earnings_quality.get('issues', [])
         }
         
+        # Generate Buy/Wait/Pass signal with price levels
+        signal_data = self.generate_signal(metrics)
+        metrics['signal'] = signal_data['signal']
+        metrics['signal_reasons'] = '; '.join(signal_data['reasons'])
+        metrics['entry_low'] = signal_data['entry_low']
+        metrics['entry_high'] = signal_data['entry_high']
+        metrics['stop_loss'] = signal_data['stop_loss']
+        
+        # Flatten sell targets into metrics
+        sell_targets = signal_data['sell_targets']
+        if sell_targets:
+            metrics['sell_target_conservative'] = sell_targets['target_conservative']
+            metrics['sell_target_primary'] = sell_targets['target_primary']
+            metrics['sell_target_aggressive'] = sell_targets['target_aggressive']
+            metrics['partial_profit_at'] = sell_targets['partial_profit_at']
+            metrics['risk_reward_ratio'] = sell_targets['risk_reward_ratio']
+            metrics['risk_percent'] = sell_targets['risk_percent']
+        else:
+            metrics['sell_target_conservative'] = None
+            metrics['sell_target_primary'] = None
+            metrics['sell_target_aggressive'] = None
+            metrics['partial_profit_at'] = None
+            metrics['risk_reward_ratio'] = None
+            metrics['risk_percent'] = None
+        
         return metrics
     
     def save_metrics(self, metrics):
@@ -1679,7 +2118,8 @@ class MinerviniAnalyzer:
              ma_150_trend_20d, ma_200_trend_20d, relative_strength, stage, passes_minervini,
              criteria_passed, criteria_failed,
              vcp_detected, vcp_score, contraction_count, latest_contraction_pct,
-             volume_contraction, pivot_price,
+             volume_contraction, pivot_price, last_contraction_low,
+             ema_10, ema_21, swing_low,
              avg_dollar_volume, volume_ratio,
              return_1m, return_3m, return_6m, return_12m,
              atr_14, atr_percent,
@@ -1687,8 +2127,15 @@ class MinerviniAnalyzer:
              eps_growth_yoy, eps_growth_qoq, revenue_growth_yoy,
              earnings_acceleration, avg_eps_surprise, earnings_beat_rate,
              has_upcoming_earnings, days_until_earnings,
-             earnings_quality_score, passes_earnings)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             earnings_quality_score, passes_earnings,
+             signal, signal_reasons,
+             entry_low, entry_high, stop_loss,
+             sell_target_conservative, sell_target_primary, sell_target_aggressive,
+             partial_profit_at, risk_reward_ratio, risk_percent)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -1712,6 +2159,10 @@ class MinerviniAnalyzer:
                 latest_contraction_pct = EXCLUDED.latest_contraction_pct,
                 volume_contraction = EXCLUDED.volume_contraction,
                 pivot_price = EXCLUDED.pivot_price,
+                last_contraction_low = EXCLUDED.last_contraction_low,
+                ema_10 = EXCLUDED.ema_10,
+                ema_21 = EXCLUDED.ema_21,
+                swing_low = EXCLUDED.swing_low,
                 avg_dollar_volume = EXCLUDED.avg_dollar_volume,
                 volume_ratio = EXCLUDED.volume_ratio,
                 return_1m = EXCLUDED.return_1m,
@@ -1732,7 +2183,18 @@ class MinerviniAnalyzer:
                 has_upcoming_earnings = EXCLUDED.has_upcoming_earnings,
                 days_until_earnings = EXCLUDED.days_until_earnings,
                 earnings_quality_score = EXCLUDED.earnings_quality_score,
-                passes_earnings = EXCLUDED.passes_earnings
+                passes_earnings = EXCLUDED.passes_earnings,
+                signal = EXCLUDED.signal,
+                signal_reasons = EXCLUDED.signal_reasons,
+                entry_low = EXCLUDED.entry_low,
+                entry_high = EXCLUDED.entry_high,
+                stop_loss = EXCLUDED.stop_loss,
+                sell_target_conservative = EXCLUDED.sell_target_conservative,
+                sell_target_primary = EXCLUDED.sell_target_primary,
+                sell_target_aggressive = EXCLUDED.sell_target_aggressive,
+                partial_profit_at = EXCLUDED.partial_profit_at,
+                risk_reward_ratio = EXCLUDED.risk_reward_ratio,
+                risk_percent = EXCLUDED.risk_percent
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -1757,6 +2219,10 @@ class MinerviniAnalyzer:
             metrics['latest_contraction_pct'],
             metrics['volume_contraction'],
             metrics['pivot_price'],
+            metrics['last_contraction_low'],
+            metrics['ema_10'],
+            metrics['ema_21'],
+            metrics['swing_low'],
             metrics['avg_dollar_volume'],
             metrics['volume_ratio'],
             metrics['return_1m'],
@@ -1777,7 +2243,18 @@ class MinerviniAnalyzer:
             metrics['has_upcoming_earnings'],
             metrics['days_until_earnings'],
             metrics['earnings_quality_score'],
-            metrics['passes_earnings']
+            metrics['passes_earnings'],
+            metrics['signal'],
+            metrics['signal_reasons'],
+            metrics['entry_low'],
+            metrics['entry_high'],
+            metrics['stop_loss'],
+            metrics['sell_target_conservative'],
+            metrics['sell_target_primary'],
+            metrics['sell_target_aggressive'],
+            metrics['partial_profit_at'],
+            metrics['risk_reward_ratio'],
+            metrics['risk_percent']
         ))
         
         self.conn.commit()
@@ -1826,9 +2303,23 @@ class MinerviniAnalyzer:
                     
                     if metrics['passes_minervini']:
                         passed += 1
+                        
+                        # Signal indicator
+                        sig = metrics.get('signal', 'PASS')
+                        sig_icon = {'BUY': '🟢', 'WAIT': '🟡', 'PASS': '🔴'}.get(sig, '⚪')
+                        
                         vcp_info = ""
                         if metrics['vcp_detected']:
-                            vcp_info = f" [VCP Score: {metrics['vcp_score']:.0f}]"
+                            vcp_info = f" [VCP: {metrics['vcp_score']:.0f}]"
+                        
+                        # Price levels for BUY/WAIT signals
+                        price_info = ""
+                        if sig in ('BUY', 'WAIT') and metrics.get('entry_low'):
+                            price_info = f" Entry: ${metrics['entry_low']:.2f}-${metrics['entry_high']:.2f}"
+                            if metrics.get('stop_loss'):
+                                price_info += f" Stop: ${metrics['stop_loss']:.2f}"
+                            if metrics.get('sell_target_primary'):
+                                price_info += f" Target: ${metrics['sell_target_primary']:.2f}"
                         
                         # Add market cap context if available
                         cap_info = ""
@@ -1837,19 +2328,7 @@ class MinerviniAnalyzer:
                             quality = "⭐" if metrics.get('_institutional_quality') else ""
                             cap_info = f" [{tier}{quality}]"
                         
-                        # Add earnings context if available
-                        earnings_info = ""
-                        if metrics.get('eps_growth_yoy') is not None:
-                            yoy = metrics['eps_growth_yoy']
-                            accel = "🚀" if metrics.get('earnings_acceleration') else ""
-                            earnings_info = f" [EPS: {yoy:+.0f}%{accel}]"
-                            
-                            # Warning for upcoming earnings
-                            if metrics.get('has_upcoming_earnings') and metrics.get('days_until_earnings'):
-                                if metrics['days_until_earnings'] <= 7:
-                                    earnings_info += f" ⚠️ Earnings in {metrics['days_until_earnings']}d"
-                        
-                        print(f"  ✓ {symbol}: PASSED - Stage {metrics['stage']} ({metrics['criteria_passed']}/8 criteria, RS={metrics['relative_strength']:.0f}){vcp_info}{cap_info}{earnings_info}")
+                        print(f"  {sig_icon} {symbol}: {sig} - Stage {metrics['stage']} ({metrics['criteria_passed']}/8, RS={metrics['relative_strength']:.0f}){vcp_info}{price_info}{cap_info}")
                 else:
                     skipped += 1
                 
@@ -1889,11 +2368,25 @@ class MinerviniAnalyzer:
         """, (date,))
         large_cap_count = cursor.fetchone()[0]
         
+        # Count signal distribution
+        cursor.execute("""
+            SELECT signal, COUNT(*) FROM minervini_metrics
+            WHERE date = %s AND passes_minervini = true AND signal IS NOT NULL
+            GROUP BY signal ORDER BY signal
+        """, (date,))
+        signal_counts = {row[0]: row[1] for row in cursor.fetchall()}
+        
         print(f"\nAnalysis Summary:")
         print(f"  Total symbols: {len(symbols)}")
         print(f"  Analyzed: {analyzed}")
         print(f"  Passed Minervini: {passed} ({(passed/analyzed*100) if analyzed else 0:.1f}%)")
         print(f"  Skipped (insufficient data/filtered): {skipped}")
+        
+        if signal_counts:
+            print(f"\n  Signal Distribution (Passing Stocks):")
+            print(f"    🟢 BUY:  {signal_counts.get('BUY', 0)}")
+            print(f"    🟡 WAIT: {signal_counts.get('WAIT', 0)}")
+            print(f"    🔴 PASS: {signal_counts.get('PASS', 0)}")
         
         if passed > 0:
             print(f"\n  Market Cap Distribution (Passing Stocks):")
@@ -1908,7 +2401,7 @@ class MinerviniAnalyzer:
         return analyzed, passed
     
     def get_top_stocks(self, date, limit=50):
-        """Get top stocks that pass Minervini criteria with enhanced metrics."""
+        """Get top stocks that pass Minervini criteria with signal and price levels."""
         cursor = self.conn.cursor()
         
         cursor.execute("""
@@ -1919,11 +2412,15 @@ class MinerviniAnalyzer:
                    mm.eps_growth_yoy, mm.eps_growth_qoq, mm.earnings_acceleration,
                    mm.earnings_beat_rate, mm.has_upcoming_earnings, mm.days_until_earnings,
                    mm.earnings_quality_score, mm.passes_earnings,
-                   td.market_cap, td.name
+                   td.market_cap, td.name,
+                   mm.signal, mm.signal_reasons,
+                   mm.entry_low, mm.entry_high, mm.stop_loss,
+                   mm.sell_target_primary, mm.risk_reward_ratio, mm.risk_percent
             FROM minervini_metrics mm
             LEFT JOIN ticker_details td ON mm.symbol = td.symbol
             WHERE mm.date = %s AND mm.passes_minervini = true
             ORDER BY 
+                CASE mm.signal WHEN 'BUY' THEN 1 WHEN 'WAIT' THEN 2 ELSE 3 END,
                 mm.passes_earnings DESC NULLS LAST,
                 mm.earnings_quality_score DESC NULLS LAST,
                 mm.relative_strength DESC, 
@@ -1969,57 +2466,87 @@ def main():
     
     # Show top stocks
     if passed > 0:
-        print("\n" + "=" * 140)
-        print("TOP STOCKS PASSING MINERVINI CRITERIA (Enhanced with Earnings)")
-        print("=" * 140)
+        print("\n" + "=" * 160)
+        print("TOP STOCKS PASSING MINERVINI CRITERIA (with Signal, Entry, Stop & Target)")
+        print("=" * 160)
         
-        top_stocks = analyzer.get_top_stocks(target_date, limit=20)
+        top_stocks = analyzer.get_top_stocks(target_date, limit=30)
         
         # Header row
-        print(f"\n{'Symbol':<8} {'Price':>9} {'RS':>5} {'IndRS':>6} {'EPSyy':>7} {'EPSqq':>7} "
-              f"{'Beat%':>6} {'ErnQual':>7} {'3M%':>7} {'$Vol(M)':>9} {'VCP':>4} {'Earn':>5}")
-        print("-" * 140)
+        print(f"\n{'Signal':<6} {'Symbol':<8} {'Price':>9} {'RS':>4} {'VCP':>4} "
+              f"{'Entry Range':>17} {'Stop':>9} {'Target':>9} {'R:R':>5} {'Risk%':>6} "
+              f"{'EPSyy':>7} {'Beat%':>6} {'$Vol(M)':>8}")
+        print("-" * 160)
+        
+        current_signal_group = None
         
         for stock in top_stocks:
             (symbol, price, rs, stage, pct_high, vcp_detected, vcp_score, pivot,
              avg_dv, vol_ratio, ind_rs, ret_1m, ret_3m, atr_pct, is_new_high,
              eps_yoy, eps_qoq, accel, beat_rate, upcoming, days_until, eq_score, passes_earn,
-             market_cap, name) = stock
+             market_cap, name,
+             sig, sig_reasons, entry_low, entry_high, stop_loss,
+             sell_target, rr_ratio, risk_pct) = stock
+            
+            # Group separator between signal types
+            if sig != current_signal_group:
+                if current_signal_group is not None:
+                    print()
+                current_signal_group = sig
+            
+            # Signal indicator
+            sig_icon = {'BUY': '🟢BUY', 'WAIT': '🟡WAIT', 'PASS': '🔴PASS'}.get(sig or 'PASS', '⚪-')
             
             # Format values with fallbacks for None
             rs_str = f"{rs:.0f}" if rs else "-"
-            ind_rs_str = f"{ind_rs:.0f}" if ind_rs else "-"
-            eps_yoy_str = f"{eps_yoy:+.0f}%" if eps_yoy is not None else "-"
-            eps_qoq_str = f"{eps_qoq:+.0f}%" if eps_qoq is not None else "-"
-            beat_str = f"{beat_rate:.0f}%" if beat_rate is not None else "-"
-            eq_str = f"{eq_score}/100" if eq_score else "-"
-            ret_3m_str = f"{ret_3m:+.1f}%" if ret_3m else "-"
-            avg_dv_str = f"{avg_dv/1_000_000:.1f}" if avg_dv else "-"
             vcp_str = f"{vcp_score:.0f}" if vcp_detected else "-"
             
-            # Earnings status
-            earn_status = ""
-            if passes_earn is True:
-                earn_status = "✓"
-            elif passes_earn is False:
-                earn_status = "✗"
-            elif upcoming and days_until and days_until <= 7:
-                earn_status = f"{days_until}d"
+            # Entry range
+            if entry_low and entry_high:
+                entry_str = f"${entry_low:.2f}-${entry_high:.2f}"
             else:
-                earn_status = "-"
+                entry_str = "-"
             
-            # Acceleration indicator
+            # Stop loss
+            stop_str = f"${stop_loss:.2f}" if stop_loss else "-"
+            
+            # Sell target
+            target_str = f"${sell_target:.2f}" if sell_target else "-"
+            
+            # Risk/reward
+            rr_str = f"{rr_ratio:.1f}" if rr_ratio else "-"
+            risk_str = f"{risk_pct:.1f}%" if risk_pct else "-"
+            
+            # Fundamentals
+            eps_yoy_str = f"{eps_yoy:+.0f}%" if eps_yoy is not None else "-"
             if accel:
-                eps_qoq_str += "🚀"
+                eps_yoy_str += "🚀"
+            beat_str = f"{beat_rate:.0f}%" if beat_rate is not None else "-"
+            avg_dv_str = f"{avg_dv/1_000_000:.1f}" if avg_dv else "-"
             
-            print(f"{symbol:<8} ${price:>8.2f} {rs_str:>5} {ind_rs_str:>6} {eps_yoy_str:>7} {eps_qoq_str:>7} "
-                  f"{beat_str:>6} {eq_str:>7} {ret_3m_str:>7} {avg_dv_str:>9} {vcp_str:>4} {earn_status:>5}")
+            print(f"{sig_icon:<6} {symbol:<8} ${price:>8.2f} {rs_str:>4} {vcp_str:>4} "
+                  f"{entry_str:>17} {stop_str:>9} {target_str:>9} {rr_str:>5} {risk_str:>6} "
+                  f"{eps_yoy_str:>7} {beat_str:>6} {avg_dv_str:>8}")
         
-        print("\n" + "-" * 140)
-        print("Legend: RS=Relative Strength, IndRS=Industry RS, EPSyy=EPS YoY Growth, EPSqq=EPS QoQ Growth,")
-        print("        Beat%=Earnings Beat Rate (last 4 qtrs), ErnQual=Earnings Quality Score,")
-        print("        $Vol(M)=Avg Dollar Volume in Millions, VCP=VCP Score, Earn=Earnings Status (✓/✗/days until)")
-        print("        🚀=Earnings Accelerating")
+        # Show signal reasons for BUY/WAIT stocks
+        print("\n" + "-" * 160)
+        print("\nSIGNAL DETAILS:")
+        print("-" * 80)
+        
+        for stock in top_stocks:
+            sig = stock[25]  # signal column
+            symbol = stock[0]
+            sig_reasons = stock[26]  # signal_reasons column
+            
+            if sig in ('BUY', 'WAIT') and sig_reasons:
+                sig_icon = '🟢' if sig == 'BUY' else '🟡'
+                print(f"  {sig_icon} {symbol}: {sig_reasons}")
+        
+        print("\n" + "-" * 160)
+        print("Legend: RS=Relative Strength, VCP=VCP Score, R:R=Risk/Reward Ratio, Risk%=Downside Risk %,")
+        print("        EPSyy=EPS YoY Growth (🚀=accelerating), Beat%=Earnings Beat Rate (last 4 qtrs),")
+        print("        $Vol(M)=Avg Dollar Volume in Millions")
+        print("        Entry Range=Suggested buy zone, Stop=Stop loss, Target=Primary sell target")
     
     # Close connection
     analyzer.close()

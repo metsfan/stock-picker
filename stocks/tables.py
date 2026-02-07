@@ -5,45 +5,54 @@ from .models import MinerviniMetrics
 
 
 class StockTable(tables.Table):
-    """Django table for displaying stock metrics"""
+    """Django table for displaying stock metrics with signal data"""
     
     watchlist = tables.Column(empty_values=(), orderable=False, verbose_name='')
+    signal = tables.Column(verbose_name='Signal', order_by=('signal',))
     symbol = tables.Column(linkify=True, attrs={'td': {'class': 'font-weight-bold'}})
     close_price = tables.Column(verbose_name='Price')
     relative_strength = tables.Column(verbose_name='RS')
-    industry_rs = tables.Column(verbose_name='Ind RS')
     stage = tables.Column(verbose_name='Stage')
-    return_3m = tables.Column(verbose_name='3M %')
-    avg_dollar_volume = tables.Column(verbose_name='$Vol')
-    volume_ratio = tables.Column(verbose_name='Vol Ratio')
-    atr_percent = tables.Column(verbose_name='ATR%')
-    is_52w_high = tables.BooleanColumn(verbose_name='New High', yesno='★,')
-    vcp_score = tables.Column(verbose_name='VCP Score')
+    entry_range = tables.Column(empty_values=(), orderable=False, verbose_name='Entry Range')
+    stop_loss = tables.Column(verbose_name='Stop')
+    sell_target_primary = tables.Column(verbose_name='Target')
+    risk_reward_ratio = tables.Column(verbose_name='R:R')
+    risk_percent = tables.Column(verbose_name='Risk%')
     vcp_detected = tables.BooleanColumn(verbose_name='VCP', yesno='✓,')
+    vcp_score = tables.Column(verbose_name='VCP Score')
+    pivot_price = tables.Column(verbose_name='Pivot')
+    industry_rs = tables.Column(verbose_name='Ind RS')
+    return_3m = tables.Column(verbose_name='3M %')
     passes_minervini = tables.BooleanColumn(verbose_name='Passes', yesno='✓,✗')
     criteria_passed = tables.Column(verbose_name='Score')
-    pivot_price = tables.Column(verbose_name='Pivot')
+    is_52w_high = tables.BooleanColumn(verbose_name='New High', yesno='★,')
+    avg_dollar_volume = tables.Column(verbose_name='$Vol')
+    percent_from_52w_high = tables.Column(verbose_name='From High')
     
     class Meta:
         model = MinerviniMetrics
         template_name = 'django_tables2/bootstrap5.html'
         fields = (
             'watchlist',
+            'signal',
             'symbol', 
             'close_price', 
             'relative_strength',
-            'industry_rs',
             'stage',
-            'return_3m',
-            'avg_dollar_volume',
-            'volume_ratio',
-            'atr_percent',
-            'is_52w_high',
+            'entry_range',
+            'stop_loss',
+            'sell_target_primary',
+            'risk_reward_ratio',
+            'risk_percent',
             'vcp_detected',
             'vcp_score',
             'pivot_price',
+            'industry_rs',
+            'return_3m',
             'passes_minervini',
             'criteria_passed',
+            'is_52w_high',
+            'avg_dollar_volume',
             'percent_from_52w_high',
         )
         attrs = {
@@ -51,6 +60,7 @@ class StockTable(tables.Table):
             'id': 'stock-table'
         }
         per_page = 50
+        order_by = '-relative_strength'
     
     def render_watchlist(self, record):
         """Render watchlist star icon"""
@@ -61,10 +71,79 @@ class StockTable(tables.Table):
             f'</button>'
         )
     
+    def render_signal(self, value):
+        """Render signal as a colored badge"""
+        if value:
+            colors = {
+                'BUY': 'success',
+                'WAIT': 'warning',
+                'PASS': 'danger',
+            }
+            icons = {
+                'BUY': '🟢',
+                'WAIT': '🟡',
+                'PASS': '🔴',
+            }
+            color = colors.get(value, 'secondary')
+            icon = icons.get(value, '')
+            text_class = ' text-dark' if value == 'WAIT' else ''
+            return mark_safe(
+                f'<span class="badge bg-{color}{text_class}" '
+                f'style="font-size:0.85em;letter-spacing:0.5px">'
+                f'{icon} {value}</span>'
+            )
+        return mark_safe('<span class="text-muted">-</span>')
+    
     def render_close_price(self, value):
         if value is not None:
             return f'${value:,.2f}'
         return '-'
+    
+    def render_entry_range(self, record):
+        """Render combined entry range from entry_low and entry_high"""
+        if record.entry_low is not None and record.entry_high is not None:
+            return mark_safe(
+                f'<span class="text-nowrap">'
+                f'${record.entry_low:,.2f}'
+                f'<span class="text-muted"> – </span>'
+                f'${record.entry_high:,.2f}'
+                f'</span>'
+            )
+        return mark_safe('<span class="text-muted">-</span>')
+    
+    def render_stop_loss(self, value):
+        if value is not None:
+            return mark_safe(f'<span class="text-danger">${value:,.2f}</span>')
+        return mark_safe('<span class="text-muted">-</span>')
+    
+    def render_sell_target_primary(self, value):
+        if value is not None:
+            return mark_safe(f'<span class="text-success">${value:,.2f}</span>')
+        return mark_safe('<span class="text-muted">-</span>')
+    
+    def render_risk_reward_ratio(self, value):
+        if value is not None:
+            rr = float(value)
+            if rr >= 3.0:
+                color = 'success'
+            elif rr >= 2.0:
+                color = 'info'
+            else:
+                color = 'warning'
+            return mark_safe(f'<span class="badge bg-{color}">{rr:.1f}:1</span>')
+        return mark_safe('<span class="text-muted">-</span>')
+    
+    def render_risk_percent(self, value):
+        if value is not None:
+            risk = float(value)
+            if risk <= 4:
+                color = 'success'
+            elif risk <= 6:
+                color = 'warning'
+            else:
+                color = 'danger'
+            return mark_safe(f'<span class="text-{color}">{risk:.1f}%</span>')
+        return mark_safe('<span class="text-muted">-</span>')
     
     def render_pivot_price(self, value):
         if value is not None:
@@ -115,7 +194,7 @@ class StockTable(tables.Table):
     
     def render_criteria_passed(self, value):
         if value is not None:
-            return f'{value}/9'
+            return f'{value}/8'
         return '-'
     
     def render_industry_rs(self, value):
@@ -150,30 +229,4 @@ class StockTable(tables.Table):
                 return mark_safe(f'<span class="text-info">${vol_m:.1f}M</span>')
             else:
                 return mark_safe(f'<span class="text-warning">${vol_m:.1f}M</span>')
-        return '-'
-    
-    def render_volume_ratio(self, value):
-        """Render volume ratio with color coding"""
-        if value is not None:
-            ratio = float(value)
-            if ratio >= 1.5:
-                return mark_safe(f'<span class="badge bg-success">{ratio:.1f}x</span>')
-            elif ratio >= 1.0:
-                return mark_safe(f'<span class="badge bg-info">{ratio:.1f}x</span>')
-            elif ratio >= 0.7:
-                return mark_safe(f'{ratio:.1f}x')
-            else:
-                return mark_safe(f'<span class="text-muted">{ratio:.1f}x</span>')
-        return '-'
-    
-    def render_atr_percent(self, value):
-        """Render ATR percentage (volatility)"""
-        if value is not None:
-            atr = float(value)
-            if atr >= 5:
-                return mark_safe(f'<span class="text-danger">{atr:.1f}%</span>')
-            elif atr >= 3:
-                return mark_safe(f'<span class="text-warning">{atr:.1f}%</span>')
-            else:
-                return mark_safe(f'<span class="text-success">{atr:.1f}%</span>')
         return '-'

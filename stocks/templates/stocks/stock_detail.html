@@ -110,6 +110,186 @@
     </div>
     {% endif %}
 
+    {% if metrics and metrics.signal %}
+    <!-- Minervini Signal Card -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card signal-card signal-card-{{ metrics.signal|lower }}">
+                <div class="card-header signal-header signal-header-{{ metrics.signal|lower }}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <span class="signal-icon">{{ metrics.signal_icon }}</span>
+                            <h5 class="mb-0 ms-2">
+                                Minervini Signal: 
+                                <span class="badge {{ metrics.signal_badge_class }} signal-badge">{{ metrics.signal }}</span>
+                            </h5>
+                        </div>
+                        <div class="d-flex align-items-center gap-3">
+                            <span class="text-muted small">Stage {{ metrics.stage }} ({{ metrics.stage_name }}) &middot; RS {{ metrics.relative_strength|floatformat:0 }} &middot; {{ metrics.criteria_passed }}/8 Criteria</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% if metrics.has_price_levels %}
+                        <!-- Price Levels -->
+                        <div class="col-lg-7 mb-3 mb-lg-0">
+                            <div class="row">
+                                <!-- Entry Range -->
+                                <div class="col-sm-4 mb-3">
+                                    <div class="price-level-card price-level-entry">
+                                        <div class="price-level-label">Entry Range</div>
+                                        <div class="price-level-value">
+                                            ${{ metrics.entry_low|floatformat:2 }}
+                                            <span class="price-level-separator">&ndash;</span>
+                                            ${{ metrics.entry_high|floatformat:2 }}
+                                        </div>
+                                        <div class="price-level-detail">
+                                            {% if metrics.close_price < metrics.entry_low %}
+                                                <span class="text-info">Below entry zone</span>
+                                            {% elif metrics.close_price > metrics.entry_high %}
+                                                <span class="text-warning">Above entry zone</span>
+                                            {% else %}
+                                                <span class="text-success">In buy zone</span>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Stop Loss -->
+                                <div class="col-sm-4 mb-3">
+                                    <div class="price-level-card price-level-stop">
+                                        <div class="price-level-label">Stop Loss</div>
+                                        <div class="price-level-value text-danger">${{ metrics.stop_loss|floatformat:2 }}</div>
+                                        <div class="price-level-detail">
+                                            {% if metrics.risk_percent %}
+                                                Risk: {{ metrics.risk_percent|floatformat:1 }}% downside
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Sell Target -->
+                                <div class="col-sm-4 mb-3">
+                                    <div class="price-level-card price-level-target">
+                                        <div class="price-level-label">Primary Target</div>
+                                        <div class="price-level-value text-success">${{ metrics.sell_target_primary|floatformat:2 }}</div>
+                                        <div class="price-level-detail">
+                                            {% if metrics.risk_reward_ratio %}
+                                                R:R {{ metrics.risk_reward_ratio|floatformat:1 }}:1
+                                            {% endif %}
+                                            {% if metrics.potential_gain_percent %}
+                                                &middot; +{{ metrics.potential_gain_percent|floatformat:1 }}%
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Price Level Visual Bar -->
+                            <div class="price-bar-container mt-2">
+                                <div class="price-bar">
+                                    <div class="price-bar-label-left">
+                                        <small class="text-danger">Stop ${{ metrics.stop_loss|floatformat:2 }}</small>
+                                    </div>
+                                    <div class="price-bar-track">
+                                        <div class="price-bar-stop"></div>
+                                        <div class="price-bar-entry"></div>
+                                        <div class="price-bar-current" title="Current: ${{ metrics.close_price|floatformat:2 }}"></div>
+                                        <div class="price-bar-target"></div>
+                                    </div>
+                                    <div class="price-bar-label-right">
+                                        <small class="text-success">Target ${{ metrics.sell_target_primary|floatformat:2 }}</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {% if metrics.partial_profit_at or metrics.sell_target_conservative or metrics.sell_target_aggressive %}
+                            <div class="mt-3">
+                                <small class="text-muted">
+                                    <strong>Profit Targets:</strong>
+                                    {% if metrics.partial_profit_at %}
+                                        Partial @ ${{ metrics.partial_profit_at|floatformat:2 }} (+20%)
+                                    {% endif %}
+                                    {% if metrics.sell_target_conservative %}
+                                        &middot; Conservative @ ${{ metrics.sell_target_conservative|floatformat:2 }} (2R)
+                                    {% endif %}
+                                    {% if metrics.sell_target_aggressive %}
+                                        &middot; Aggressive @ ${{ metrics.sell_target_aggressive|floatformat:2 }} (+25%)
+                                    {% endif %}
+                                </small>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Signal Reasons -->
+                        <div class="{% if metrics.has_price_levels %}col-lg-5{% else %}col-12{% endif %}">
+                            <h6 class="mb-2">
+                                {% if metrics.signal == 'BUY' %}Why Buy
+                                {% elif metrics.signal == 'WAIT' %}Why Wait
+                                {% else %}Why Pass
+                                {% endif %}
+                            </h6>
+                            <ul class="signal-reasons-list mb-2">
+                                {% for reason in metrics.signal_reasons_list %}
+                                <li>{{ reason }}</li>
+                                {% endfor %}
+                            </ul>
+                            
+                            <!-- Key Supporting Metrics -->
+                            <div class="signal-metrics-grid">
+                                {% if metrics.vcp_detected %}
+                                <div class="signal-metric">
+                                    <span class="signal-metric-label">VCP Score</span>
+                                    <span class="signal-metric-value">{{ metrics.vcp_score|floatformat:0 }}/100</span>
+                                </div>
+                                {% endif %}
+                                {% if metrics.pivot_price %}
+                                <div class="signal-metric">
+                                    <span class="signal-metric-label">Pivot</span>
+                                    <span class="signal-metric-value">${{ metrics.pivot_price|floatformat:2 }}</span>
+                                </div>
+                                {% endif %}
+                                {% if metrics.ema_10 %}
+                                <div class="signal-metric">
+                                    <span class="signal-metric-label">10 EMA</span>
+                                    <span class="signal-metric-value">${{ metrics.ema_10|floatformat:2 }}</span>
+                                </div>
+                                {% endif %}
+                                {% if metrics.ema_21 %}
+                                <div class="signal-metric">
+                                    <span class="signal-metric-label">21 EMA</span>
+                                    <span class="signal-metric-value">${{ metrics.ema_21|floatformat:2 }}</span>
+                                </div>
+                                {% endif %}
+                                {% if metrics.atr_percent %}
+                                <div class="signal-metric">
+                                    <span class="signal-metric-label">ATR%</span>
+                                    <span class="signal-metric-value">{{ metrics.atr_percent|floatformat:1 }}%</span>
+                                </div>
+                                {% endif %}
+                                {% if metrics.eps_growth_yoy %}
+                                <div class="signal-metric">
+                                    <span class="signal-metric-label">EPS YoY</span>
+                                    <span class="signal-metric-value {% if metrics.eps_growth_yoy > 0 %}text-success{% else %}text-danger{% endif %}">{{ metrics.eps_growth_yoy|floatformat:0 }}%</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            
+                            {% if metrics.has_upcoming_earnings and metrics.days_until_earnings %}
+                            <div class="alert alert-warning py-2 px-3 mt-2 mb-0 small">
+                                <strong>Earnings in {{ metrics.days_until_earnings }} days</strong> &mdash; consider waiting until after the report.
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {% if metrics %}
         <div class="row mb-4">
             <!-- Stock Price Chart -->
@@ -663,9 +843,9 @@
                         <h5 class="mb-0">🤖 AI Analysis</h5>
                         <div class="d-flex align-items-center" style="gap: 0.5rem;">
                             <select id="modelSelect" class="form-select form-select-sm">
-                                <option value="claude-sonnet-4-20250514" selected>Sonnet 4.5 (Recommended)</option>
-                                <option value="claude-opus-4-20250514">Opus 4.5 (Most Capable)</option>
-                                <option value="claude-haiku-4-20250514">Haiku 4.5 (Fastest)</option>
+                                <option value="claude-sonnet-4-5" selected>Sonnet 4.5 (Recommended)</option>
+                                <option value="claude-opus-4-6">Opus 4.6 (Most Capable)</option>
+                                <option value="claude-haiku-4-5">Haiku 4.5 (Fastest)</option>
                             </select>
                             <button id="analyzeBtn" class="btn btn-light btn-sm">
                                 <span id="analyzeText">Generate Analysis</span>

@@ -42,6 +42,10 @@ class StockListView(SingleTableMixin, ListView):
         
         if filter_type == 'passing':
             queryset = queryset.filter(passes_minervini=True)
+        elif filter_type == 'buy':
+            queryset = queryset.filter(signal='BUY')
+        elif filter_type == 'buy_wait':
+            queryset = queryset.filter(signal__in=['BUY', 'WAIT'])
         elif filter_type == 'vcp':
             queryset = queryset.filter(vcp_detected=True)
         elif filter_type == 'stage2':
@@ -49,9 +53,22 @@ class StockListView(SingleTableMixin, ListView):
         elif filter_type == 'stage2_vcp':
             queryset = queryset.filter(stage=2, vcp_detected=True, passes_minervini=True)
         
-        # Sort by filter parameter
-        sort_by = self.request.GET.get('sort', '-relative_strength')
-        queryset = queryset.order_by(sort_by)
+        # Sort by filter parameter (default: BUY first, then by RS descending)
+        sort_by = self.request.GET.get('sort', '')
+        if sort_by:
+            queryset = queryset.order_by(sort_by)
+        else:
+            # Default sort: signal priority (BUY > WAIT > PASS), then RS descending
+            from django.db.models import Case, When, Value, IntegerField
+            queryset = queryset.annotate(
+                signal_priority=Case(
+                    When(signal='BUY', then=Value(1)),
+                    When(signal='WAIT', then=Value(2)),
+                    When(signal='PASS', then=Value(3)),
+                    default=Value(4),
+                    output_field=IntegerField(),
+                )
+            ).order_by('signal_priority', '-relative_strength')
         
         return queryset
     
@@ -66,6 +83,8 @@ class StockListView(SingleTableMixin, ListView):
         if latest_date:
             all_stocks = MinerviniMetrics.objects.filter(date=latest_date)
             context['total_stocks'] = all_stocks.count()
+            context['buy_count'] = all_stocks.filter(signal='BUY').count()
+            context['buy_wait_count'] = all_stocks.filter(signal__in=['BUY', 'WAIT']).count()
             context['passing_count'] = all_stocks.filter(passes_minervini=True).count()
             context['vcp_count'] = all_stocks.filter(vcp_detected=True).count()
             context['stage2_count'] = all_stocks.filter(stage=2).count()
@@ -192,9 +211,9 @@ def stock_detail_view(request, symbol):
     model_display_name = None
     if latest_analysis:
         model_names = {
-            'claude-opus-4-20250514': 'Claude Opus 4.5',
-            'claude-sonnet-4-20250514': 'Claude Sonnet 4.5',
-            'claude-haiku-4-20250514': 'Claude Haiku 4.5'
+            'claude-opus-4-6': 'Claude Opus 4.6',
+            'claude-sonnet-4-5': 'Claude Sonnet 4.5',
+            'claude-haiku-4-5': 'Claude Haiku 4.5'
         }
         model_display_name = model_names.get(latest_analysis.model_used, latest_analysis.model_used)
     
@@ -264,9 +283,9 @@ def analyze_stock_ai(request, symbol):
     
     # Get friendly model name
     model_names = {
-        'claude-opus-4-20250514': 'Claude Opus 4.5',
-        'claude-sonnet-4-20250514': 'Claude Sonnet 4.5',
-        'claude-haiku-4-20250514': 'Claude Haiku 4.5'
+        'claude-opus-4-6': 'Claude Opus 4.6',
+        'claude-sonnet-4-5': 'Claude Sonnet 4.5',
+        'claude-haiku-4-5': 'Claude Haiku 4.5'
     }
     model_display_name = model_names.get(selected_model, selected_model)
     

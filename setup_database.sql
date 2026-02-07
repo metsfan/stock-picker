@@ -322,3 +322,45 @@ ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS percent_from_52w_low NUME
 -- Index for the new columns
 CREATE INDEX IF NOT EXISTS idx_ma_150_trend ON minervini_metrics(ma_150_trend_20d);
 CREATE INDEX IF NOT EXISTS idx_pct_from_52w_low ON minervini_metrics(percent_from_52w_low DESC);
+
+-- ============================================================================
+-- 2026-02-06: Buy/Wait/Pass Signal System
+-- Adds Minervini signal generation with entry ranges, stop losses, and targets
+-- ============================================================================
+
+-- Short-term EMAs for entry/stop calculations
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS ema_10 NUMERIC(10, 2);       -- 10-day EMA (tight trailing stop)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS ema_21 NUMERIC(10, 2);       -- 21-day EMA (pullback entry level)
+
+-- VCP pattern stop loss anchor
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS last_contraction_low NUMERIC(10, 2);  -- Low of VCP's tightest contraction
+
+-- Swing low for pattern-based stop loss
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS swing_low NUMERIC(10, 2);    -- Most recent swing low
+
+-- Signal: BUY, WAIT, or PASS
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS signal VARCHAR(10);           -- BUY / WAIT / PASS
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS signal_reasons TEXT;           -- Explanation for the signal
+
+-- Entry price range (suggested buy zone)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS entry_low NUMERIC(10, 2);     -- Lower bound of entry range
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS entry_high NUMERIC(10, 2);    -- Upper bound of entry range
+
+-- Stop loss
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS stop_loss NUMERIC(10, 2);     -- Suggested stop loss price
+
+-- Sell targets (profit-taking levels)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS sell_target_conservative NUMERIC(10, 2);  -- 2:1 R/R target
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS sell_target_primary NUMERIC(10, 2);       -- Min(3:1 R/R, +25%)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS sell_target_aggressive NUMERIC(10, 2);    -- +25% target
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS partial_profit_at NUMERIC(10, 2);         -- +20% partial profit level
+
+-- Risk metrics
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS risk_reward_ratio NUMERIC(5, 1);  -- R:R ratio for primary target
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS risk_percent NUMERIC(5, 1);       -- Downside risk as % of entry
+
+-- Indices for signal queries
+CREATE INDEX IF NOT EXISTS idx_signal ON minervini_metrics(signal);
+CREATE INDEX IF NOT EXISTS idx_signal_date ON minervini_metrics(date, signal);
+CREATE INDEX IF NOT EXISTS idx_buy_signals ON minervini_metrics(date, signal) WHERE signal = 'BUY';
+CREATE INDEX IF NOT EXISTS idx_wait_signals ON minervini_metrics(date, signal) WHERE signal = 'WAIT';

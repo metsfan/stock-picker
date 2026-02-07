@@ -54,20 +54,34 @@
                     <table class="table table-hover table-striped">
                         <thead>
                             <tr>
+                                <th>Signal</th>
                                 <th>Symbol</th>
                                 <th>Price</th>
                                 <th>RS</th>
                                 <th>Stage</th>
+                                <th>Entry Range</th>
+                                <th>Stop</th>
+                                <th>Target</th>
+                                <th>R:R</th>
                                 <th>VCP</th>
                                 <th>Passes</th>
-                                <th>52w High</th>
-                                <th>Distance</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for stock in stocks %}
                             <tr>
+                                <td>
+                                    {% if stock.signal == 'BUY' %}
+                                        <span class="badge bg-success">🟢 BUY</span>
+                                    {% elif stock.signal == 'WAIT' %}
+                                        <span class="badge bg-warning text-dark">🟡 WAIT</span>
+                                    {% elif stock.signal == 'PASS' %}
+                                        <span class="badge bg-danger">🔴 PASS</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
                                 <td>
                                     <a href="{% url 'stocks:stock_detail' symbol=stock.symbol %}" class="fw-bold">
                                         {{ stock.symbol }}
@@ -91,6 +105,40 @@
                                     {% endif %}
                                 </td>
                                 <td>
+                                    {% if stock.entry_low and stock.entry_high %}
+                                        <span class="text-nowrap">${{ stock.entry_low|floatformat:2 }} – ${{ stock.entry_high|floatformat:2 }}</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stock.stop_loss %}
+                                        <span class="text-danger">${{ stock.stop_loss|floatformat:2 }}</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stock.sell_target_primary %}
+                                        <span class="text-success">${{ stock.sell_target_primary|floatformat:2 }}</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stock.risk_reward_ratio %}
+                                        {% if stock.risk_reward_ratio >= 3 %}
+                                            <span class="badge bg-success">{{ stock.risk_reward_ratio|floatformat:1 }}:1</span>
+                                        {% elif stock.risk_reward_ratio >= 2 %}
+                                            <span class="badge bg-info">{{ stock.risk_reward_ratio|floatformat:1 }}:1</span>
+                                        {% else %}
+                                            <span class="badge bg-warning text-dark">{{ stock.risk_reward_ratio|floatformat:1 }}:1</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
                                     {% if stock.vcp_detected %}
                                         <span class="badge bg-info">{{ stock.vcp_score|floatformat:0 }}</span>
                                     {% else %}
@@ -101,17 +149,7 @@
                                     {% if stock.passes_minervini %}
                                         <span class="text-success">✓</span>
                                     {% else %}
-                                        <span class="text-muted">{{ stock.criteria_passed }}/9</span>
-                                    {% endif %}
-                                </td>
-                                <td>${{ stock.week_52_high|floatformat:2 }}</td>
-                                <td>
-                                    {% if stock.percent_from_52w_high >= -10 %}
-                                        <span class="text-success">{{ stock.percent_from_52w_high|floatformat:1 }}%</span>
-                                    {% elif stock.percent_from_52w_high >= -25 %}
-                                        <span class="text-warning">{{ stock.percent_from_52w_high|floatformat:1 }}%</span>
-                                    {% else %}
-                                        <span class="text-danger">{{ stock.percent_from_52w_high|floatformat:1 }}%</span>
+                                        <span class="text-muted">{{ stock.criteria_passed }}/8</span>
                                     {% endif %}
                                 </td>
                                 <td>
@@ -129,10 +167,10 @@
             <div class="mt-3">
                 <p class="text-muted">
                     <strong>Legend:</strong> 
-                    RS = Relative Strength (70+ is strong) | 
-                    VCP = Volatility Contraction Pattern detected | 
-                    Passes = Meets all Minervini criteria | 
-                    Stage: 1=Basing, 2=Advancing, 3=Topping, 4=Declining
+                    Signal: 🟢 BUY = actionable, 🟡 WAIT = forming, 🔴 PASS = avoid |
+                    Entry Range = Suggested buy zone | Stop = Stop loss | Target = Primary sell target |
+                    R:R = Risk/Reward | RS = Relative Strength (70+ is strong) | 
+                    VCP = Volatility Contraction Pattern | Passes = Meets all Minervini criteria
                 </p>
             </div>
         {% else %}

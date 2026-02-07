@@ -66,6 +66,14 @@ class MinerviniMetrics(models.Model):
     days_since_52w_high = models.IntegerField(null=True)
     industry_rs = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     
+    # VCP stop loss anchor
+    last_contraction_low = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    
+    # Short-term EMAs
+    ema_10 = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    ema_21 = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    swing_low = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    
     # Earnings/Fundamental metrics
     eps_growth_yoy = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     eps_growth_qoq = models.DecimalField(max_digits=10, decimal_places=2, null=True)
@@ -77,6 +85,19 @@ class MinerviniMetrics(models.Model):
     days_until_earnings = models.IntegerField(null=True)
     earnings_quality_score = models.IntegerField(null=True)
     passes_earnings = models.BooleanField(null=True)
+    
+    # Signal system (Buy/Wait/Pass)
+    signal = models.CharField(max_length=10, null=True, blank=True)
+    signal_reasons = models.TextField(null=True, blank=True)
+    entry_low = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    entry_high = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    stop_loss = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    sell_target_conservative = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    sell_target_primary = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    sell_target_aggressive = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    partial_profit_at = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    risk_reward_ratio = models.DecimalField(max_digits=5, decimal_places=1, null=True)
+    risk_percent = models.DecimalField(max_digits=5, decimal_places=1, null=True)
 
     class Meta:
         db_table = 'minervini_metrics'
@@ -188,6 +209,45 @@ class MinerviniMetrics(models.Model):
             return "Average"
         else:
             return "Lagging"
+    
+    @property
+    def signal_badge_class(self):
+        """Bootstrap badge class for signal display"""
+        classes = {
+            'BUY': 'bg-success',
+            'WAIT': 'bg-warning text-dark',
+            'PASS': 'bg-danger',
+        }
+        return classes.get(self.signal, 'bg-secondary')
+    
+    @property
+    def signal_icon(self):
+        """Emoji icon for signal"""
+        icons = {
+            'BUY': '🟢',
+            'WAIT': '🟡',
+            'PASS': '🔴',
+        }
+        return icons.get(self.signal, '⚪')
+    
+    @property
+    def signal_reasons_list(self):
+        """Signal reasons as a list (split by semicolons)"""
+        if not self.signal_reasons:
+            return []
+        return [r.strip() for r in self.signal_reasons.split(';') if r.strip()]
+    
+    @property
+    def has_price_levels(self):
+        """Whether this stock has computed entry/stop/target levels"""
+        return self.entry_low is not None and self.stop_loss is not None
+    
+    @property
+    def potential_gain_percent(self):
+        """Potential gain to primary target as percentage"""
+        if self.entry_low and self.sell_target_primary:
+            return float((self.sell_target_primary - self.entry_low) / self.entry_low * 100)
+        return None
 
 
 class AIAnalysis(models.Model):

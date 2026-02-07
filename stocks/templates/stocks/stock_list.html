@@ -15,21 +15,27 @@
 
         <div class="row mb-4">
             <div class="col-12">
-                <div class="btn-toolbar" role="toolbar">
+                <div class="btn-toolbar flex-wrap gap-2" role="toolbar">
                     <div class="btn-group me-2" role="group">
                         <a href="?filter=all" class="btn btn-{% if current_filter == 'all' %}primary{% else %}outline-primary{% endif %}">
                             All Stocks ({{ total_stocks }})
                         </a>
-                        <a href="?filter=passing" class="btn btn-{% if current_filter == 'passing' %}success{% else %}outline-success{% endif %}">
+                        <a href="?filter=buy" class="btn btn-{% if current_filter == 'buy' %}success{% else %}outline-success{% endif %}">
+                            🟢 Buy ({{ buy_count }})
+                        </a>
+                        <a href="?filter=buy_wait" class="btn btn-{% if current_filter == 'buy_wait' %}warning{% else %}outline-warning{% endif %} {% if current_filter == 'buy_wait' %}text-dark{% endif %}">
+                            🟢🟡 Buy + Wait ({{ buy_wait_count }})
+                        </a>
+                        <a href="?filter=passing" class="btn btn-{% if current_filter == 'passing' %}info{% else %}outline-info{% endif %}">
                             Passing ({{ passing_count }})
                         </a>
-                        <a href="?filter=vcp" class="btn btn-{% if current_filter == 'vcp' %}info{% else %}outline-info{% endif %}">
+                        <a href="?filter=vcp" class="btn btn-{% if current_filter == 'vcp' %}secondary{% else %}outline-secondary{% endif %}">
                             VCP ({{ vcp_count }})
                         </a>
-                        <a href="?filter=stage2" class="btn btn-{% if current_filter == 'stage2' %}warning{% else %}outline-warning{% endif %}">
+                        <a href="?filter=stage2" class="btn btn-{% if current_filter == 'stage2' %}secondary{% else %}outline-secondary{% endif %}">
                             Stage 2 ({{ stage2_count }})
                         </a>
-                        <a href="?filter=stage2_vcp" class="btn btn-{% if current_filter == 'stage2_vcp' %}danger{% else %}outline-danger{% endif %}">
+                        <a href="?filter=stage2_vcp" class="btn btn-{% if current_filter == 'stage2_vcp' %}dark{% else %}outline-dark{% endif %}">
                             Best Setups ({{ stage2_vcp_count }})
                         </a>
                     </div>
@@ -39,8 +45,11 @@
                             Sort By
                         </button>
                         <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}">Signal &amp; RS (Default)</a></li>
                             <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-relative_strength">Relative Strength (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-risk_reward_ratio">Risk/Reward (Best First)</a></li>
                             <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-vcp_score">VCP Score (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-return_3m">3M Return (High to Low)</a></li>
                             <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=symbol">Symbol (A-Z)</a></li>
                             <li><a class="dropdown-item" href="?filter={{ current_filter }}&sort=-close_price">Price (High to Low)</a></li>
                         </ul>
@@ -58,9 +67,11 @@
         <div class="mt-3">
             <p class="text-muted">
                 <strong>Legend:</strong> 
+                Signal: 🟢 BUY = actionable now, 🟡 WAIT = setup forming, 🔴 PASS = avoid |
+                Entry Range = Suggested buy zone | Stop = Stop loss | Target = Primary sell target |
+                R:R = Risk/Reward ratio | Risk% = Downside risk |
                 RS = Relative Strength (70+ is strong) | 
-                VCP = Volatility Contraction Pattern detected | 
-                Passes = Meets all Minervini criteria | 
+                VCP = Volatility Contraction Pattern |
                 Stage: 1=Basing, 2=Advancing, 3=Topping, 4=Declining
             </p>
         </div>

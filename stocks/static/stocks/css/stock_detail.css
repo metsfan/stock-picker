@@ -354,3 +354,249 @@
 .btn:active {
     transform: scale(0.98);
 }
+
+/* ============================================================================
+   Signal Card Styles (Buy/Wait/Pass)
+   ============================================================================ */
+
+.signal-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    transition: box-shadow 0.2s;
+}
+
+.signal-card:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Signal-specific card borders */
+.signal-card-buy {
+    border-color: #16a34a;
+}
+
+.signal-card-wait {
+    border-color: #d97706;
+}
+
+.signal-card-pass {
+    border-color: #dc2626;
+}
+
+/* Signal Headers */
+.signal-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.signal-header-buy {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+}
+
+.signal-header-wait {
+    background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+
+.signal-header-pass {
+    background: linear-gradient(135deg, #fef2f2 0%, #fecaca 100%);
+}
+
+.signal-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.signal-badge {
+    font-size: 0.95rem;
+    padding: 6px 14px;
+    letter-spacing: 0.5px;
+    font-weight: 700;
+    vertical-align: middle;
+}
+
+/* Price Level Cards */
+.price-level-card {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-align: center;
+    border: 1px solid #e2e8f0;
+    height: 100%;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.price-level-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.price-level-entry {
+    border-left: 4px solid #3b82f6;
+}
+
+.price-level-stop {
+    border-left: 4px solid #ef4444;
+}
+
+.price-level-target {
+    border-left: 4px solid #22c55e;
+}
+
+.price-level-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.price-level-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1e293b;
+    line-height: 1.2;
+}
+
+.price-level-separator {
+    color: #94a3b8;
+    margin: 0 2px;
+}
+
+.price-level-detail {
+    font-size: 0.78rem;
+    margin-top: 4px;
+    color: #64748b;
+}
+
+/* Price Bar Visual */
+.price-bar-container {
+    padding: 0 4px;
+}
+
+.price-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.price-bar-label-left,
+.price-bar-label-right {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.price-bar-track {
+    flex: 1;
+    height: 8px;
+    background: linear-gradient(to right, #fecaca 0%, #fde68a 25%, #bbf7d0 75%, #86efac 100%);
+    border-radius: 4px;
+    position: relative;
+}
+
+.price-bar-current {
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    background: #1e293b;
+    border: 2px solid white;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    cursor: help;
+    z-index: 2;
+}
+
+/* Signal Reasons */
+.signal-reasons-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.signal-reasons-list li {
+    padding: 5px 0 5px 22px;
+    position: relative;
+    font-size: 0.9rem;
+    color: #374151;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.signal-reasons-list li:last-child {
+    border-bottom: none;
+}
+
+.signal-reasons-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 11px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #94a3b8;
+}
+
+.signal-card-buy .signal-reasons-list li::before {
+    background: #22c55e;
+}
+
+.signal-card-wait .signal-reasons-list li::before {
+    background: #f59e0b;
+}
+
+.signal-card-pass .signal-reasons-list li::before {
+    background: #ef4444;
+}
+
+/* Signal Supporting Metrics Grid */
+.signal-metrics-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.signal-metric {
+    background: #f1f5f9;
+    border-radius: 6px;
+    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+}
+
+.signal-metric-label {
+    color: #64748b;
+    font-weight: 600;
+}
+
+.signal-metric-value {
+    color: #1e293b;
+    font-weight: 700;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .signal-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .signal-header .d-flex {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .price-level-value {
+        font-size: 1.1rem;
+    }
+    
+    .price-bar-container {
+        display: none;
+    }
+}
