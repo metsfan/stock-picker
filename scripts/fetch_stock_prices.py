@@ -77,8 +77,8 @@ def get_db_connection_pool(min_conn=1, max_conn=BATCH_SIZE):
             host='localhost',
             port=5432,
             database='stocks',
-            user='postgres',
-            password='adamesk'
+            user='stocks',
+            password='stocks'
         )
     except psycopg2.Error as e:
         print(f"Error: Could not create connection pool: {e}")
