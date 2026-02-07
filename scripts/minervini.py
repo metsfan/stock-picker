@@ -71,8 +71,8 @@ class MinerviniAnalyzer:
             'host': 'localhost',
             'port': 5432,
             'database': 'stocks',
-            'user': 'postgres',
-            'password': 'adamesk'
+            'user': 'stocks',
+            'password': 'stocks'
         }
         
         # Market benchmark symbols and their weights for relative strength calculation
