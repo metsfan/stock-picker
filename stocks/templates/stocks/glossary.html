@@ -1,0 +1,314 @@
+{% extends 'stocks/base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}Glossary - Stock Picker{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">📖 Glossary</h1>
+    <p class="lead text-muted mb-4">
+        Key terms and definitions to help you use this app effectively. The analysis is based on the Minervini methodology for identifying high-probability stock setups.
+    </p>
+
+    <div class="row">
+        <div class="col-lg-10">
+            <div class="accordion" id="glossaryAccordion">
+                <!-- Signals & Action -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#signals">
+                            Signals & Action
+                        </button>
+                    </h2>
+                    <div id="signals" class="accordion-collapse collapse show" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>BUY</dt>
+                                <dd>A stock meets the criteria for an actionable setup. The pattern is formed and entry conditions are present. Consider buying within the entry range.</dd>
+
+                                <dt>WAIT</dt>
+                                <dd>The stock is forming a setup but is not yet ready. Price may be in a base, awaiting a breakout, or needs more time to consolidate. Monitor for a future BUY signal.</dd>
+
+                                <dt>PASS</dt>
+                                <dd>The stock does not meet the criteria. It may be in a declining stage, failed a breakout, or lacks the required technical/fundamental factors. Avoid for now.</dd>
+
+                                <dt>Entry Range</dt>
+                                <dd>The suggested price zone (low to high) at which to consider buying. Ideally, buy near the low end of the range for better risk/reward.</dd>
+
+                                <dt>Stop Loss</dt>
+                                <dd>The price level at which to exit the position to limit losses if the trade goes against you. Typically based on the lowest point of the recent base or pivot.</dd>
+
+                                <dt>Target (Primary)</dt>
+                                <dd>The primary price target for taking profits. Based on the measured move or resistance from the base pattern.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stage Analysis -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#stages">
+                            Stage Analysis
+                        </button>
+                    </h2>
+                    <div id="stages" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>Stage 1 – Basing</dt>
+                                <dd>Price is consolidating after a prior decline. The stock is building a base. Not yet actionable; wait for a breakout into Stage 2.</dd>
+
+                                <dt>Stage 2 – Advancing</dt>
+                                <dd>The ideal stage. Price is in an uptrend, making higher highs and higher lows. This is when you want to buy breakouts from proper bases.</dd>
+
+                                <dt>Stage 3 – Topping</dt>
+                                <dd>Price has extended and may be forming a top. Distribution often occurs. Be cautious; consider taking profits or tightening stops.</dd>
+
+                                <dt>Stage 4 – Declining</dt>
+                                <dd>Price is in a downtrend. Avoid new purchases. Existing positions should be exited or heavily reduced.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VCP (Volatility Contraction Pattern) -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#vcp">
+                            VCP (Volatility Contraction Pattern)
+                        </button>
+                    </h2>
+                    <div id="vcp" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>VCP – Volatility Contraction Pattern</dt>
+                                <dd>A consolidation pattern where each pullback within the base is smaller than the previous one. Tighter pullbacks indicate diminishing selling pressure and often precede strong breakouts.</dd>
+
+                                <dt>VCP Score</dt>
+                                <dd>A 0–100 score rating the quality of the VCP. Higher scores indicate cleaner, more constructive bases with proper volatility contraction.</dd>
+
+                                <dt>Contraction Count</dt>
+                                <dd>How many pullbacks (contractions) have occurred within the base. Typical VCPs have 2–3 contractions before the breakout.</dd>
+
+                                <dt>Latest Contraction %</dt>
+                                <dd>The depth of the most recent pullback within the base. Smaller contractions (e.g., 3–5%) are generally more bullish than deep ones.</dd>
+
+                                <dt>Volume Contraction</dt>
+                                <dd>Volume drying up on pullbacks within the base. Low volume on down days suggests weak selling pressure, a positive sign.</dd>
+
+                                <dt>Pivot Price</dt>
+                                <dd>The price level that, when surpassed on above-average volume, confirms the breakout and signals a potential buy point.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Relative Strength & Momentum -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#rs">
+                            Relative Strength & Momentum
+                        </button>
+                    </h2>
+                    <div id="rs" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>Relative Strength (RS)</dt>
+                                <dd>A percentile rank (0–99) comparing the stock’s price performance vs. the market. RS 80+ means the stock has outperformed 80% of the universe. Leaders typically have RS 70 or higher.</dd>
+
+                                <dt>Industry RS (Ind RS)</dt>
+                                <dd>Relative strength of the stock’s industry or sector. Strong stocks often come from strong industry groups.</dd>
+
+                                <dt>3M Return (3M %)</dt>
+                                <dd>Price return over the last 3 months. Used to gauge short-term momentum.</dd>
+
+                                <dt>52-Week High / Low</dt>
+                                <dd>The highest and lowest price the stock traded at over the past 52 weeks. Leaders often trade near 52-week highs.</dd>
+
+                                <dt>% From 52w High (From High)</dt>
+                                <dd>How far the current price is from the 52-week high. Stocks within 10–15% of highs are often in strong positions.</dd>
+
+                                <dt>New High (★)</dt>
+                                <dd>Indicates the stock is at or very near a 52-week high, showing strong momentum.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Volume -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#volume">
+                            Volume
+                        </button>
+                    </h2>
+                    <div id="volume" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>$Vol (Avg Dollar Volume)</dt>
+                                <dd>Average daily dollar value traded (price × volume). Higher dollar volume (e.g., $20M+) provides better liquidity and institutional participation.</dd>
+
+                                <dt>Volume Ratio (Vol Ratio)</dt>
+                                <dd>Today’s volume divided by the average volume. Values above 1.0 mean above-average volume. Breakouts should ideally occur on 1.5x+ volume.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Risk & Reward -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#risk">
+                            Risk & Reward
+                        </button>
+                    </h2>
+                    <div id="risk" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>R:R (Risk/Reward Ratio)</dt>
+                                <dd>The ratio of potential gain (to target) vs. potential loss (to stop). A 3:1 R:R means you risk $1 to make $3. Higher ratios are preferred.</dd>
+
+                                <dt>Risk %</dt>
+                                <dd>The percentage you would lose from entry to stop loss if stopped out. Lower risk per trade (e.g., 3–5%) allows better portfolio management.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Minervini Criteria -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#minervini">
+                            Minervini Methodology
+                        </button>
+                    </h2>
+                    <div id="minervini" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>Passes Minervini (Score)</dt>
+                                <dd>Whether the stock meets the 9-point checklist (trend, moving averages, relative strength, earnings, volume, etc.). Shown as X/9 criteria passed plus RS filter.</dd>
+
+                                <dt>Passing Minervini</dt>
+                                <dd>Filter for stocks that meet all Minervini criteria. These are pre-screened for high-probability setups.</dd>
+
+                                <dt>Best Setups</dt>
+                                <dd>Stocks in Stage 2 with a VCP detected and passing Minervini. Often the highest-quality actionable candidates.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Earnings & Fundamentals -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#earnings">
+                            Earnings & Fundamentals
+                        </button>
+                    </h2>
+                    <div id="earnings" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>EPS Growth YoY</dt>
+                                <dd>Earnings per share growth year over year. Strong growth (e.g., 25%+) is preferred for growth stocks.</dd>
+
+                                <dt>EPS Growth QoQ</dt>
+                                <dd>Earnings per share growth quarter over quarter. Indicates acceleration or deceleration in earnings.</dd>
+
+                                <dt>Revenue Growth YoY</dt>
+                                <dd>Revenue growth year over year. Confirms that earnings growth is supported by sales growth.</dd>
+
+                                <dt>Earnings Acceleration</dt>
+                                <dd>Earnings growth is increasing each quarter. A positive sign that momentum is building.</dd>
+
+                                <dt>Earnings Beat Rate</dt>
+                                <dd>Percentage of recent quarters where actual EPS beat estimates. Consistent beaters are often rewarded by the market.</dd>
+
+                                <dt>Earnings Quality Score</dt>
+                                <dd>A composite score (0–100) of earnings quality based on growth, consistency, and surprises.</dd>
+
+                                <dt>Passes Earnings</dt>
+                                <dd>Whether the stock meets the earnings-related criteria (growth, beats, etc.) in the Minervini framework.</dd>
+
+                                <dt>Upcoming Earnings</dt>
+                                <dd>Earnings announcement is scheduled within the next 14 days. Consider waiting until after earnings to reduce event risk.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Moving Averages -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#ma">
+                            Moving Averages
+                        </button>
+                    </h2>
+                    <div id="ma" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>50-Day MA (MA 50)</dt>
+                                <dd>50-day simple moving average. Price should ideally be above it in uptrends. Acts as short-term support.</dd>
+
+                                <dt>150-Day MA (MA 150)</dt>
+                                <dd>150-day simple moving average. Mid-term trend indicator. Strong stocks stay above this line.</dd>
+
+                                <dt>200-Day MA (MA 200)</dt>
+                                <dd>200-day simple moving average. Long-term trend. Price above the 200-day MA is generally bullish.</dd>
+
+                                <dt>200-Day MA Trend (20d)</dt>
+                                <dd>The percentage change in the 200-day MA over the last 20 days. A rising 200-day MA confirms an uptrend.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Volatility -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#volatility">
+                            Volatility
+                        </button>
+                    </h2>
+                    <div id="volatility" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>ATR (Average True Range)</dt>
+                                <dd>Measures volatility by averaging the true range over 14 periods. Higher ATR means more price swings.</dd>
+
+                                <dt>ATR %</dt>
+                                <dd>ATR as a percentage of price. Helps compare volatility across different price levels.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- App Features -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#app">
+                            App Features
+                        </button>
+                    </h2>
+                    <div id="app" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>Watchlist</dt>
+                                <dd>Your personalized list of stocks to track. Add symbols for quick access and notifications.</dd>
+
+                                <dt>Notifications</dt>
+                                <dd>Alerts when watchlist stocks change (e.g., WAIT → BUY, metric changes, earnings surprises).</dd>
+
+                                <dt>AI Analysis</dt>
+                                <dd>AI-generated analysis combining technical metrics with live MarketWatch data (headlines, analyst ratings) for additional context.</dd>
+
+                                <dt>Market Cap Filters</dt>
+                                <dd>Filter stocks by size: Mega (&gt;$200B), Large ($10B–$200B), Mid ($2B–$10B), Small ($300M–$2B), Micro (&lt;$300M).</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

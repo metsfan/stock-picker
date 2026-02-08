@@ -146,6 +146,11 @@ class StockListView(SingleTableMixin, ListView):
         return context
 
 
+def glossary_view(request):
+    """Glossary of terms and definitions for the app."""
+    return render(request, 'stocks/glossary.html')
+
+
 def dashboard_view(request):
     """Dashboard with summary statistics"""
     # Get latest date
@@ -379,11 +384,64 @@ def analyze_stock_ai(request, symbol):
         symbol=symbol.upper()
     ).order_by('-date')[:30]
     
+    # Fetch MarketWatch data for additional context
+    marketwatch_context = ""
+    try:
+        import requests as req
+        from bs4 import BeautifulSoup
+        
+        mw_url = f"https://www.marketwatch.com/investing/stock/{symbol.lower()}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        mw_response = req.get(mw_url, headers=headers, timeout=10)
+        
+        if mw_response.status_code == 200:
+            soup = BeautifulSoup(mw_response.text, 'html.parser')
+            mw_data = []
+            
+            # Extract key data points from the page
+            key_data = soup.select('.kv__item')
+            for item in key_data[:15]:
+                label_el = item.select_one('.kv__label')
+                value_el = item.select_one('.kv__value')
+                if label_el and value_el:
+                    label = label_el.get_text(strip=True)
+                    value = value_el.get_text(strip=True)
+                    mw_data.append(f"- {label}: {value}")
+            
+            # Extract recent headlines
+            headlines = []
+            headline_els = soup.select('.article__headline a, .headline a, h3.article__headline')
+            for h in headline_els[:8]:
+                text = h.get_text(strip=True)
+                if text and len(text) > 15:
+                    headlines.append(f"- {text}")
+            
+            # Extract analyst ratings/price targets if available
+            analyst_els = soup.select('.analyst__option')
+            analyst_data = []
+            for el in analyst_els:
+                text = el.get_text(strip=True)
+                if text:
+                    analyst_data.append(f"- {text}")
+            
+            if mw_data or headlines or analyst_data:
+                marketwatch_context = f"\n\nMARKETWATCH DATA (Live from marketwatch.com):\n"
+                if mw_data:
+                    marketwatch_context += "\nKey Data:\n" + "\n".join(mw_data)
+                if analyst_data:
+                    marketwatch_context += "\n\nAnalyst Ratings:\n" + "\n".join(analyst_data)
+                if headlines:
+                    marketwatch_context += "\n\nRecent Headlines:\n" + "\n".join(headlines)
+    except Exception as e:
+        print(f"Warning: Could not fetch MarketWatch data for {symbol}: {e}")
+    
     # Build the prompt with all available data
     prompt = f"""You are a professional stock analyst. Analyze {symbol.upper()} comprehensively by considering:
 
 1. The technical data provided below (Minervini methodology)
-2. Any recent news, current events, or market sentiment about this company
+2. The live MarketWatch data provided below (key stats, analyst ratings, recent headlines)
 3. Recent earnings reports, guidance, or financial announcements
 4. Industry trends and competitive landscape
 5. Macroeconomic factors that may affect this stock
@@ -433,6 +491,10 @@ RECENT PRICE TREND (Last 10 days):
     for i, day in enumerate(history[:10]):
         prompt += f"\n{day.date}: ${day.close_price} | Stage {day.stage} | RS {day.relative_strength}"
     
+    # Append MarketWatch data if available
+    if marketwatch_context:
+        prompt += marketwatch_context
+    
     prompt += f"""
 
 ANALYSIS REQUIREMENTS:
@@ -449,7 +511,8 @@ Provide a comprehensive analysis that includes:
 8. **Action Recommendation** - Clear BUY, HOLD, WAIT, or AVOID with detailed reasoning
 
 IMPORTANT: 
-- If you're aware of any recent news, earnings reports, or significant events for {symbol.upper()}, incorporate them into your analysis
+- Incorporate the MarketWatch data above (key stats, analyst ratings, and recent headlines) into your analysis where relevant
+- If you're aware of any additional recent news, earnings reports, or significant events for {symbol.upper()}, incorporate them as well
 - Consider the broader market context and sector performance
 - Be specific about entry points, stop losses, and price targets where applicable
 - Keep the analysis actionable and concise (4-5 paragraphs)
