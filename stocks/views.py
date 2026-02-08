@@ -320,20 +320,20 @@ def analyze_stock_ai(request, symbol):
     # Parse request body to get selected model and force_regenerate flag
     try:
         body = json.loads(request.body) if request.body else {}
-        selected_model = body.get('model', 'claude-sonnet-4-20250514')  # Default to Sonnet 4.5
+        selected_model = body.get('model', 'claude-sonnet-4-5')  # Default to Sonnet 4.5
         force_regenerate = body.get('force_regenerate', False)
     except json.JSONDecodeError:
-        selected_model = 'claude-sonnet-4-20250514'
+        selected_model = 'claude-sonnet-4-5'
         force_regenerate = False
     
     # Validate model selection
     valid_models = [
-        'claude-opus-4-20250514',
-        'claude-sonnet-4-20250514', 
-        'claude-haiku-4-20250514'
+        'claude-opus-4-6',
+        'claude-sonnet-4-5', 
+        'claude-haiku-4-5'
     ]
     if selected_model not in valid_models:
-        selected_model = 'claude-sonnet-4-20250514'
+        selected_model = 'claude-sonnet-4-5'
     
     # Get friendly model name
     model_names = {
