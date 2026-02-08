@@ -103,6 +103,50 @@
                     </div>
                 </div>
 
+                <!-- Primary Base (IPO/New Issues) -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#primaryBase">
+                            Primary Base (IPO / New Issues)
+                        </button>
+                    </h2>
+                    <div id="primaryBase" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <dl>
+                                <dt>Primary Base</dt>
+                                <dd>The first proper consolidation pattern a newly listed stock (IPO) forms after its initial trading period. Minervini requires that a new issue build a primary base before it is considered buyable. This ensures the stock has enough trading history and has been through a constructive correction.</dd>
+
+                                <dt>New Issue</dt>
+                                <dd>A stock that has been listed for less than 2 years. These stocks are flagged for primary base analysis since they lack the long trading history that established stocks have.</dd>
+
+                                <dt>Base Duration</dt>
+                                <dd>The length of the primary base measured in weeks, starting from the post-IPO high. A minimum of 3 to 5 weeks is needed to form a reliable base. Some IPOs can take up to a year or more.</dd>
+
+                                <dt>Correction Depth</dt>
+                                <dd>The maximum percentage decline from the post-IPO high during the base formation. Allowed correction depth depends on the base duration:
+                                    <ul class="mt-1 mb-0">
+                                        <li><strong>3-week base:</strong> max 25% correction</li>
+                                        <li><strong>3-5 week base:</strong> max 25-35% correction</li>
+                                        <li><strong>Longer bases (up to ~1 year):</strong> can correct up to 50%</li>
+                                    </ul>
+                                </dd>
+
+                                <dt>Status: Complete</dt>
+                                <dd>The stock has formed a proper primary base that meets the duration and correction requirements, and price has recovered within 15% of its post-IPO high. The stock is eligible for normal BUY/WAIT/PASS evaluation.</dd>
+
+                                <dt>Status: Forming</dt>
+                                <dd>The base meets the correction limit for its duration but the price has not yet recovered near the highs. The setup is constructive but needs more time. Signal is capped at WAIT.</dd>
+
+                                <dt>Status: Failed</dt>
+                                <dd>The correction from the post-IPO high is too deep for the current base duration. For example, a 3-week base that corrected 30% exceeds the 25% maximum. Signal is set to PASS.</dd>
+
+                                <dt>Status: Too Early</dt>
+                                <dd>The stock has been trading for less than 3 weeks since its post-IPO high, which is insufficient time to form a proper base. Wait for more trading history to accumulate.</dd>
+                            </dl>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Relative Strength & Momentum -->
                 <div class="accordion-item">
                     <h2 class="accordion-header">

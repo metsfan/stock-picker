@@ -86,6 +86,14 @@ class MinerviniMetrics(models.Model):
     earnings_quality_score = models.IntegerField(null=True)
     passes_earnings = models.BooleanField(null=True)
     
+    # Primary Base metrics (IPO/new issues)
+    is_new_issue = models.BooleanField(null=True)
+    has_primary_base = models.BooleanField(null=True)
+    primary_base_weeks = models.DecimalField(max_digits=5, decimal_places=1, null=True)
+    primary_base_correction_pct = models.DecimalField(max_digits=5, decimal_places=1, null=True)
+    primary_base_status = models.CharField(max_length=20, null=True, blank=True)
+    days_since_ipo = models.IntegerField(null=True)
+    
     # Signal system (Buy/Wait/Pass)
     signal = models.CharField(max_length=10, null=True, blank=True)
     signal_reasons = models.TextField(null=True, blank=True)
@@ -248,6 +256,30 @@ class MinerviniMetrics(models.Model):
         if self.entry_low and self.sell_target_primary:
             return float((self.sell_target_primary - self.entry_low) / self.entry_low * 100)
         return None
+    
+    @property
+    def primary_base_status_display(self):
+        """Human-readable primary base status"""
+        labels = {
+            'N/A': 'N/A',
+            'TOO_EARLY': 'Too Early',
+            'FORMING': 'Forming',
+            'COMPLETE': 'Complete',
+            'FAILED': 'Failed',
+        }
+        return labels.get(self.primary_base_status, self.primary_base_status or 'N/A')
+    
+    @property
+    def primary_base_badge_class(self):
+        """Bootstrap badge class for primary base status"""
+        classes = {
+            'COMPLETE': 'bg-success',
+            'FORMING': 'bg-warning text-dark',
+            'FAILED': 'bg-danger',
+            'TOO_EARLY': 'bg-secondary',
+            'N/A': 'bg-secondary',
+        }
+        return classes.get(self.primary_base_status, 'bg-secondary')
 
 
 class AIAnalysis(models.Model):

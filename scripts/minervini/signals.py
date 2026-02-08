@@ -269,6 +269,13 @@ class SignalGenerator:
         last_contraction_low = metrics.get('last_contraction_low')
         swing_low = metrics.get('swing_low')
 
+        # Primary Base (IPO/new issue) context
+        is_new_issue = metrics.get('is_new_issue', False)
+        has_primary_base = metrics.get('has_primary_base')
+        primary_base_status = metrics.get('primary_base_status', 'N/A')
+        primary_base_weeks = metrics.get('primary_base_weeks')
+        primary_base_correction = metrics.get('primary_base_correction_pct')
+
         signal = 'PASS'
         reasons = []
 
@@ -279,6 +286,7 @@ class SignalGenerator:
 
         # === BUY CONDITIONS ===
         # All technical criteria pass, proper setup confirmed, actionable entry
+        # New issues must have a completed primary base before buying
         is_buy = (
             passes and
             stage == 2 and
@@ -286,7 +294,8 @@ class SignalGenerator:
             rs is not None and rs >= 80 and
             distance_from_pivot is not None and -2 <= distance_from_pivot <= 5 and
             not (upcoming_earnings and days_until is not None and days_until <= 14) and
-            passes_earnings is not False
+            passes_earnings is not False and
+            (not is_new_issue or has_primary_base is True)
         )
 
         if is_buy:
@@ -330,6 +339,12 @@ class SignalGenerator:
             if passes_earnings is False:
                 reasons.append('Earnings criteria not met -- watch for improvement')
 
+            # Primary base context for new issues
+            if is_new_issue and primary_base_status == 'FORMING':
+                weeks_str = f'{primary_base_weeks:.0f}' if primary_base_weeks else '?'
+                corr_str = f'{primary_base_correction:.0f}%' if primary_base_correction else '?'
+                reasons.append(f'IPO primary base forming ({weeks_str}wk, {corr_str} correction)')
+
             if not reasons:
                 reasons.append('Setup forming -- monitor for confirmation')
 
@@ -343,6 +358,15 @@ class SignalGenerator:
                 reasons.append(f'Weak relative strength ({rs:.0f})')
             if passes_earnings is False:
                 reasons.append('Fails earnings criteria')
+
+            # Primary base context for new issues
+            if is_new_issue:
+                if primary_base_status == 'TOO_EARLY':
+                    reasons.append('New issue -- insufficient trading history for primary base')
+                elif primary_base_status == 'FAILED':
+                    corr_str = f'{primary_base_correction:.0f}%' if primary_base_correction else '?'
+                    reasons.append(f'New issue -- correction too deep ({corr_str}) for primary base')
+
             if not reasons:
                 reasons.append('Does not meet Minervini setup requirements')
 

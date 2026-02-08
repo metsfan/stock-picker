@@ -77,6 +77,11 @@ class StockListView(SingleTableMixin, ListView):
         if earnings_filter == '1':
             queryset = queryset.filter(has_upcoming_earnings=True)
         
+        # Apply new issue filter
+        new_issue_filter = self.request.GET.get('new_issue', '')
+        if new_issue_filter == '1':
+            queryset = queryset.filter(is_new_issue=True)
+        
         # Apply market cap filter
         cap_filter = self.request.GET.get('cap', 'all')
         if cap_filter in self.CAP_TIERS:
@@ -131,6 +136,7 @@ class StockListView(SingleTableMixin, ListView):
                 stage=2, vcp_detected=True, passes_minervini=True
             ).count()
             context['upcoming_earnings_count'] = all_stocks.filter(has_upcoming_earnings=True).count()
+            context['new_issue_count'] = all_stocks.filter(is_new_issue=True).count()
             
             # Market cap tier counts
             context['cap_mega_count'] = all_stocks.filter(market_cap__gte=200_000_000_000).count()
@@ -142,6 +148,7 @@ class StockListView(SingleTableMixin, ListView):
         context['current_filter'] = self.request.GET.get('filter', 'all')
         context['current_cap'] = self.request.GET.get('cap', 'all')
         context['current_earnings'] = self.request.GET.get('earnings', '')
+        context['current_new_issue'] = self.request.GET.get('new_issue', '')
         
         return context
 

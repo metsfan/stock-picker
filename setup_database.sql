@@ -386,3 +386,19 @@ CREATE INDEX IF NOT EXISTS idx_notifications_symbol ON notifications(symbol);
 CREATE INDEX IF NOT EXISTS idx_notifications_date ON notifications(date);
 CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(is_read) WHERE is_read = FALSE;
+
+-- ============================================================================
+-- 2026-02-08: Primary Base detection for IPOs/new issues (Minervini)
+-- Tracks whether recent new issues have formed a proper primary base before
+-- they are considered buyable. Tiered correction rules based on base duration.
+-- ============================================================================
+
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS is_new_issue BOOLEAN;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS has_primary_base BOOLEAN;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS primary_base_weeks NUMERIC(5, 1);
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS primary_base_correction_pct NUMERIC(5, 1);
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS primary_base_status VARCHAR(20);  -- N/A, TOO_EARLY, FORMING, COMPLETE, FAILED
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS days_since_ipo INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_is_new_issue ON minervini_metrics(is_new_issue);
+CREATE INDEX IF NOT EXISTS idx_primary_base_status ON minervini_metrics(primary_base_status);

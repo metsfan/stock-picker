@@ -17,46 +17,46 @@
             <div class="col-12">
                 <div class="btn-toolbar flex-wrap gap-2" role="toolbar">
                     <div class="btn-group me-2" role="group">
-                        <a href="?filter=all&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-{% if current_filter == 'all' %}primary{% else %}outline-primary{% endif %}">
+                        <a href="?filter=all&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'all' %}primary{% else %}outline-primary{% endif %}">
                             All Stocks ({{ total_stocks }})
                         </a>
-                        <a href="?filter=buy&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-{% if current_filter == 'buy' %}success{% else %}outline-success{% endif %}">
+                        <a href="?filter=buy&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'buy' %}success{% else %}outline-success{% endif %}">
                             🟢 Buy ({{ buy_count }})
                         </a>
-                        <a href="?filter=buy_wait&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-{% if current_filter == 'buy_wait' %}warning{% else %}outline-warning{% endif %} {% if current_filter == 'buy_wait' %}text-dark{% endif %}">
+                        <a href="?filter=buy_wait&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'buy_wait' %}warning{% else %}outline-warning{% endif %} {% if current_filter == 'buy_wait' %}text-dark{% endif %}">
                             🟢🟡 Buy + Wait ({{ buy_wait_count }})
                         </a>
-                        <a href="?filter=passing&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-{% if current_filter == 'passing' %}info{% else %}outline-info{% endif %}">
+                        <a href="?filter=passing&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'passing' %}info{% else %}outline-info{% endif %}">
                             Passing ({{ passing_count }})
                         </a>
-                        <a href="?filter=vcp&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-{% if current_filter == 'vcp' %}secondary{% else %}outline-secondary{% endif %}">
+                        <a href="?filter=vcp&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'vcp' %}secondary{% else %}outline-secondary{% endif %}">
                             VCP ({{ vcp_count }})
                         </a>
-                        <a href="?filter=stage2&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-{% if current_filter == 'stage2' %}secondary{% else %}outline-secondary{% endif %}">
+                        <a href="?filter=stage2&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'stage2' %}secondary{% else %}outline-secondary{% endif %}">
                             Stage 2 ({{ stage2_count }})
                         </a>
-                        <a href="?filter=stage2_vcp&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-{% if current_filter == 'stage2_vcp' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter=stage2_vcp&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'stage2_vcp' %}dark{% else %}outline-dark{% endif %}">
                             Best Setups ({{ stage2_vcp_count }})
                         </a>
                     </div>
                     
                     <div class="btn-group me-2" role="group">
-                        <a href="?filter={{ current_filter }}&cap=all{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'all' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter={{ current_filter }}&cap=all{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'all' %}dark{% else %}outline-dark{% endif %}">
                             All Caps
                         </a>
-                        <a href="?filter={{ current_filter }}&cap=mega{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'mega' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter={{ current_filter }}&cap=mega{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'mega' %}dark{% else %}outline-dark{% endif %}">
                             Mega ({{ cap_mega_count }})
                         </a>
-                        <a href="?filter={{ current_filter }}&cap=large{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'large' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter={{ current_filter }}&cap=large{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'large' %}dark{% else %}outline-dark{% endif %}">
                             Large ({{ cap_large_count }})
                         </a>
-                        <a href="?filter={{ current_filter }}&cap=mid{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'mid' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter={{ current_filter }}&cap=mid{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'mid' %}dark{% else %}outline-dark{% endif %}">
                             Mid ({{ cap_mid_count }})
                         </a>
-                        <a href="?filter={{ current_filter }}&cap=small{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'small' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter={{ current_filter }}&cap=small{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'small' %}dark{% else %}outline-dark{% endif %}">
                             Small ({{ cap_small_count }})
                         </a>
-                        <a href="?filter={{ current_filter }}&cap=micro{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'micro' %}dark{% else %}outline-dark{% endif %}">
+                        <a href="?filter={{ current_filter }}&cap=micro{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-sm btn-{% if current_cap == 'micro' %}dark{% else %}outline-dark{% endif %}">
                             Micro ({{ cap_micro_count }})
                         </a>
                     </div>
@@ -66,24 +66,32 @@
                             Sort By
                         </button>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}">Signal &amp; RS (Default)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&sort=-relative_strength">Relative Strength (High to Low)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&sort=-risk_reward_ratio">Risk/Reward (Best First)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&sort=-vcp_score">VCP Score (High to Low)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&sort=-return_3m">3M Return (High to Low)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&sort=symbol">Symbol (A-Z)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&sort=-close_price">Price (High to Low)</a></li>
-                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&sort=-market_cap">Market Cap (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}">Signal &amp; RS (Default)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}&sort=-relative_strength">Relative Strength (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}&sort=-risk_reward_ratio">Risk/Reward (Best First)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}&sort=-vcp_score">VCP Score (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}&sort=-return_3m">3M Return (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}&sort=symbol">Symbol (A-Z)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}&sort=-close_price">Price (High to Low)</a></li>
+                            <li><a class="dropdown-item" href="?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}&sort=-market_cap">Market Cap (High to Low)</a></li>
                         </ul>
                     </div>
 
-                    <div class="d-flex align-items-center ms-2">
+                    <div class="d-flex align-items-center ms-2 gap-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="earningsFilter"
                                 {% if current_earnings == '1' %}checked{% endif %}
-                                onchange="window.location.href='?filter={{ current_filter }}&cap={{ current_cap }}&earnings=' + (this.checked ? '1' : '')">
+                                onchange="window.location.href='?filter={{ current_filter }}&cap={{ current_cap }}&earnings=' + (this.checked ? '1' : '') + '{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}'">
                             <label class="form-check-label" for="earningsFilter">
                                 Upcoming Earnings ({{ upcoming_earnings_count }})
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="newIssueFilter"
+                                {% if current_new_issue == '1' %}checked{% endif %}
+                                onchange="window.location.href='?filter={{ current_filter }}&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}&new_issue=' + (this.checked ? '1' : '')">
+                            <label class="form-check-label" for="newIssueFilter">
+                                🆕 New Issue ({{ new_issue_count }})
                             </label>
                         </div>
                     </div>

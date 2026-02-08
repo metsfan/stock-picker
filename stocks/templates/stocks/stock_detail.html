@@ -774,6 +774,68 @@
                     </div>
                 </div>
 
+                <!-- Primary Base Card (IPO/New Issues) -->
+                {% if metrics.is_new_issue %}
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">🆕 Primary Base (IPO)</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <td><strong>Status:</strong></td>
+                                <td class="text-end">
+                                    <span class="badge {{ metrics.primary_base_badge_class }}">{{ metrics.primary_base_status_display }}</span>
+                                </td>
+                            </tr>
+                            {% if metrics.days_since_ipo is not None %}
+                            <tr>
+                                <td><strong>Days Since IPO:</strong></td>
+                                <td class="text-end">{{ metrics.days_since_ipo }}</td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.primary_base_weeks is not None %}
+                            <tr>
+                                <td><strong>Base Duration:</strong></td>
+                                <td class="text-end">{{ metrics.primary_base_weeks|floatformat:1 }} weeks</td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.primary_base_correction_pct is not None %}
+                            <tr>
+                                <td><strong>Correction Depth:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.primary_base_correction_pct <= 25 %}
+                                        <span class="text-success">{{ metrics.primary_base_correction_pct|floatformat:1 }}%</span>
+                                    {% elif metrics.primary_base_correction_pct <= 35 %}
+                                        <span class="text-warning">{{ metrics.primary_base_correction_pct|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.primary_base_correction_pct|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td><strong>Assessment:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.primary_base_status == 'COMPLETE' %}
+                                        <span class="text-success">✓ Base formed -- stock is buyable</span>
+                                    {% elif metrics.primary_base_status == 'FORMING' %}
+                                        <span class="text-warning">Base forming -- monitor for completion</span>
+                                    {% elif metrics.primary_base_status == 'FAILED' %}
+                                        <span class="text-danger">✗ Correction too deep for base timeframe</span>
+                                    {% elif metrics.primary_base_status == 'TOO_EARLY' %}
+                                        <span class="text-muted">Insufficient trading history</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                        <small class="text-muted">
+                            Minervini requires new issues to form a primary base (3-5+ weeks, max 25-50% correction depending on duration) before buying.
+                        </small>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Moving Averages Card -->
                 <div class="card">
                     <div class="card-header bg-warning">

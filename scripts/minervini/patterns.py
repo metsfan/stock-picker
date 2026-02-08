@@ -1,7 +1,9 @@
 """
 Chart pattern detection for Minervini analysis.
 
-Currently implements Volatility Contraction Pattern (VCP) detection.
+Implements:
+- Volatility Contraction Pattern (VCP) detection
+- Primary Base detection for IPOs/new issues
 """
 
 from datetime import datetime, timedelta
@@ -203,3 +205,151 @@ class PatternDetector:
             'pivot_price': pivot_price,
             'last_contraction_low': last_contraction_low
         }
+
+    def detect_primary_base(self, symbol, end_date, list_date):
+        """
+        Detect whether an IPO/new issue has formed a proper primary base.
+
+        Minervini's Primary Base Requirements (from "Trade Like a Stock
+        Market Wizard"):
+        - Recent new issues must form a base before they are buyable.
+        - Minimum base duration: 3-5 weeks.
+        - Correction thresholds are tiered by duration:
+            * 3-week consolidation: max 25% correction
+            * 3-5 weeks: max 25-35% (linear scale)
+            * Longer bases (up to ~1 year): can correct up to 50%
+        - Corrections exceeding these limits are unreliable.
+
+        Args:
+            symbol: Stock symbol
+            end_date: Date to analyze (YYYY-MM-DD string)
+            list_date: Stock's listing/IPO date (date object or None)
+
+        Returns:
+            dict with primary base metrics:
+            - is_new_issue: True if stock listed within last 2 years
+            - has_primary_base: True/False/None (None = N/A)
+            - primary_base_weeks: Duration of base in weeks
+            - primary_base_correction_pct: Max correction depth %
+            - primary_base_status: N/A / TOO_EARLY / FORMING / COMPLETE / FAILED
+            - days_since_ipo: Calendar days since listing
+        """
+        empty_result = {
+            'is_new_issue': False,
+            'has_primary_base': None,
+            'primary_base_weeks': None,
+            'primary_base_correction_pct': None,
+            'primary_base_status': 'N/A',
+            'days_since_ipo': None,
+        }
+
+        if not list_date:
+            return empty_result
+
+        # Parse dates
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        if isinstance(list_date, str):
+            list_date_obj = datetime.strptime(list_date, "%Y-%m-%d")
+        else:
+            # date or datetime object
+            list_date_obj = datetime(list_date.year, list_date.month, list_date.day)
+
+        days_since_ipo = (end_date_obj - list_date_obj).days
+
+        # Only consider stocks listed within the last 2 years as "new issues"
+        if days_since_ipo > 730:
+            return empty_result
+
+        result = {
+            'is_new_issue': True,
+            'has_primary_base': None,
+            'primary_base_weeks': None,
+            'primary_base_correction_pct': None,
+            'primary_base_status': 'TOO_EARLY',
+            'days_since_ipo': days_since_ipo,
+        }
+
+        # Need at least ~3 weeks of calendar days to even check
+        if days_since_ipo < 15:
+            return result
+
+        # Get all price data since listing
+        cursor = self.conn.cursor()
+        list_date_str = list_date_obj.strftime("%Y-%m-%d")
+
+        cursor.execute("""
+            SELECT date, high, low, close FROM stock_prices
+            WHERE symbol = %s AND date >= %s AND date <= %s
+            ORDER BY date ASC
+        """, (symbol, list_date_str, end_date))
+
+        rows = cursor.fetchall()
+        cursor.close()
+
+        # Need at least ~3 weeks of trading days (~15 days)
+        if len(rows) < 15:
+            return result
+
+        # Extract price series
+        dates = [row[0] for row in rows]
+        highs = [float(row[1]) for row in rows]
+        lows = [float(row[2]) for row in rows]
+        closes = [float(row[3]) for row in rows]
+
+        # Find the post-IPO high
+        max_high = max(highs)
+        max_high_idx = highs.index(max_high)
+
+        # If the high is at the very end, there's no base yet
+        if max_high_idx >= len(highs) - 3:
+            return result
+
+        # Measure correction from post-IPO high
+        post_high_lows = lows[max_high_idx:]
+        min_low = min(post_high_lows)
+        correction_pct = ((max_high - min_low) / max_high) * 100
+
+        # Base duration: trading days from post-IPO high to current date, in weeks
+        base_trading_days = len(rows) - max_high_idx
+        base_weeks = base_trading_days / 5.0  # ~5 trading days per week
+
+        result['primary_base_weeks'] = round(base_weeks, 1)
+        result['primary_base_correction_pct'] = round(correction_pct, 1)
+
+        # Evaluate base quality based on Minervini's tiered rules
+        if base_weeks < 3:
+            result['primary_base_status'] = 'TOO_EARLY'
+            return result
+
+        # Determine max allowed correction based on duration
+        if base_weeks <= 3:
+            max_correction = 25.0
+        elif base_weeks <= 5:
+            # Linear scale: 25% at 3 weeks -> 35% at 5 weeks
+            max_correction = 25.0 + (base_weeks - 3.0) * 5.0
+        elif base_weeks <= 52:
+            # Linear scale: 35% at 5 weeks -> 50% at 52 weeks
+            max_correction = 35.0 + (base_weeks - 5.0) / (52.0 - 5.0) * 15.0
+        else:
+            max_correction = 50.0
+
+        if correction_pct > max_correction:
+            # Correction too deep for this timeframe
+            result['has_primary_base'] = False
+            result['primary_base_status'] = 'FAILED'
+            return result
+
+        # Correction is acceptable -- check if base is completing or still forming
+        current_price = closes[-1]
+        distance_from_high = ((max_high - current_price) / max_high) * 100
+
+        if distance_from_high <= 15:
+            # Price has recovered near the high -- base is complete
+            result['has_primary_base'] = True
+            result['primary_base_status'] = 'COMPLETE'
+        else:
+            # Still consolidating -- base is forming
+            result['has_primary_base'] = False
+            result['primary_base_status'] = 'FORMING'
+
+        return result

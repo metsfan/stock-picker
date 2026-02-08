@@ -117,6 +117,10 @@ class MinerviniAnalyzer:
         # Detect VCP pattern
         vcp_data = self.patterns.detect_vcp(symbol, date)
 
+        # Detect Primary Base for IPOs/new issues
+        list_date = ticker_details['list_date'] if ticker_details else None
+        primary_base_data = self.patterns.detect_primary_base(symbol, date, list_date)
+
         # Calculate enhanced metrics
         avg_dollar_volume = self.volume.calculate_avg_dollar_volume(symbol, date)
         volume_ratio = self.volume.calculate_volume_ratio(symbol, date)
@@ -245,6 +249,14 @@ class MinerviniAnalyzer:
                     # Note: Not a hard disqualifier, but flagged
                     pass
 
+        # Apply Primary Base filter for new issues
+        # Minervini requires IPOs to form a proper base before buying
+        if primary_base_data['is_new_issue'] and not primary_base_data['has_primary_base']:
+            if passes_all:
+                passes_all = False
+                if 'no_primary_base' not in failed_criteria:
+                    failed_criteria.append('no_primary_base')
+
         # Extract earnings metrics for storage
         eps_growth_yoy = None
         eps_growth_qoq = None
@@ -333,6 +345,13 @@ class MinerviniAnalyzer:
             'days_until_earnings': days_until_earnings,
             'earnings_quality_score': earnings_quality_score,
             'passes_earnings': passes_earnings,
+            # Primary Base metrics (IPO/new issues)
+            'is_new_issue': primary_base_data['is_new_issue'],
+            'has_primary_base': primary_base_data['has_primary_base'],
+            'primary_base_weeks': primary_base_data['primary_base_weeks'],
+            'primary_base_correction_pct': primary_base_data['primary_base_correction_pct'],
+            'primary_base_status': primary_base_data['primary_base_status'],
+            'days_since_ipo': primary_base_data['days_since_ipo'],
             # Ticker context (for logging/debugging)
             '_market_cap_tier': market_cap_tier,
             '_liquidity_score': liquidity_score,
