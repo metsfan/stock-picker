@@ -27,6 +27,7 @@ class StockTable(tables.Table):
     criteria_passed = tables.Column(verbose_name='Score')
     is_52w_high = tables.BooleanColumn(verbose_name='New High', yesno='★,')
     avg_dollar_volume = tables.Column(verbose_name='$Vol')
+    volume_ratio = tables.Column(verbose_name='Vol Ratio')
     percent_from_52w_high = tables.Column(verbose_name='From High')
     has_upcoming_earnings = tables.Column(verbose_name='Earnings', orderable=True)
     
@@ -54,6 +55,7 @@ class StockTable(tables.Table):
             'criteria_passed',
             'is_52w_high',
             'avg_dollar_volume',
+            'volume_ratio',
             'percent_from_52w_high',
             'has_upcoming_earnings',
         )
@@ -231,6 +233,20 @@ class StockTable(tables.Table):
                 return mark_safe(f'<span class="text-info">${vol_m:.1f}M</span>')
             else:
                 return mark_safe(f'<span class="text-warning">${vol_m:.1f}M</span>')
+        return '-'
+    
+    def render_volume_ratio(self, value):
+        """Render volume ratio with color coding"""
+        if value is not None:
+            ratio = float(value)
+            if ratio >= 1.5:
+                return mark_safe(f'<span class="badge bg-success">{ratio:.1f}x</span>')
+            elif ratio >= 1.0:
+                return mark_safe(f'<span class="badge bg-info">{ratio:.1f}x</span>')
+            elif ratio >= 0.7:
+                return mark_safe(f'<span>{ratio:.1f}x</span>')
+            else:
+                return mark_safe(f'<span class="text-muted">{ratio:.1f}x</span>')
         return '-'
     
     def render_has_upcoming_earnings(self, value, record):
