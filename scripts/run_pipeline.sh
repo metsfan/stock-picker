@@ -59,11 +59,12 @@ run_step() {
 }
 
 # Execute pipeline steps
-run_step 1 "Fetch Stock Prices (Split-Adjusted)" "fetch_stock_prices.py"
-run_step 2 "Fetch Historical Earnings" "fetch_earnings.py"
-run_step 3 "Fetch Upcoming Earnings" "fetch_upcoming_earnings.py"
-run_step 4 "Fetch Income Statements" "fetch_income_statements.py"
-run_step 5 "Run Minervini Analysis" "minervini.py"
+run_step 1 "Fetch Daily Tickers" "daily_tickers.py"
+run_step 2 "Fetch Stock Prices (Split-Adjusted)" "fetch_stock_prices.py"
+run_step 3 "Fetch Historical Earnings" "fetch_earnings.py"
+run_step 4 "Fetch Upcoming Earnings" "fetch_upcoming_earnings.py"
+run_step 5 "Fetch Income Statements" "fetch_income_statements.py"
+run_step 6 "Run Minervini Analysis" "minervini.py"
 
 # Success
 echo ""
