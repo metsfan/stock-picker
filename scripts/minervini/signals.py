@@ -2,7 +2,9 @@
 Trading signal generation for Minervini analysis.
 
 Pure logic module (no database dependency) that determines market stage,
-calculates entry/stop/target price levels, and generates Buy/Wait/Pass signals.
+calculates entry/stop/target price levels, and generates:
+- Buy/Wait/Pass signals (for prospective buyers)
+- Hold/Sell signals (for existing stockholders)
 """
 
 
@@ -399,4 +401,214 @@ class SignalGenerator:
             'entry_high': entry_high,
             'stop_loss': stop_loss,
             'sell_targets': sell_targets,
+        }
+
+    # ==================================================================
+    # Holder signals: HOLD / SELL (for existing stockholders)
+    # ==================================================================
+
+    def calculate_initial_stop(self, close_price, atr_14, ema_21,
+                               last_contraction_low, swing_low):
+        """
+        Calculate a tight stop loss for new/recent positions, relative to
+        the current price.
+
+        Uses the same multi-method approach as calculate_stop_loss() but
+        anchors on the current close price instead of a hypothetical entry.
+
+        Args:
+            close_price: Current closing price (used as reference)
+            atr_14: 14-day Average True Range
+            ema_21: 21-day EMA
+            last_contraction_low: Low of VCP's last contraction
+            swing_low: Most recent swing low
+
+        Returns:
+            float: Suggested initial stop loss price
+        """
+        return self.calculate_stop_loss(
+            close_price, atr_14, ema_21, last_contraction_low, swing_low
+        )
+
+    def calculate_trailing_stop(self, close_price, ema_10, ema_21, ma_50, ma_200):
+        """
+        Calculate a trailing stop for existing holders based on rising
+        moving averages.
+
+        Selects the highest MA that is below the current price, giving
+        holders maximum room while still protecting gains.  A small buffer
+        (1-2 %) is subtracted to avoid stop-outs from normal intraday noise.
+
+        Priority (tightest first):
+            1. 10-day EMA  (aggressive trailing)
+            2. 21-day EMA  (moderate)
+            3. 50-day MA   (standard trend-following)
+            4. 200-day MA  (last-resort long-term support)
+
+        Args:
+            close_price: Current closing price
+            ema_10: 10-day Exponential Moving Average
+            ema_21: 21-day Exponential Moving Average
+            ma_50: 50-day Simple Moving Average
+            ma_200: 200-day Simple Moving Average
+
+        Returns:
+            tuple: (stop_price, method_label) or (None, None)
+        """
+        if not close_price:
+            return None, None
+
+        # Build candidates: (stop_price_with_buffer, label)
+        candidates = []
+
+        if ema_10 and ema_10 < close_price:
+            candidates.append((round(ema_10 * 0.99, 2), '10-EMA'))
+
+        if ema_21 and ema_21 < close_price:
+            candidates.append((round(ema_21 * 0.98, 2), '21-EMA'))
+
+        if ma_50 and ma_50 < close_price:
+            candidates.append((round(ma_50 * 0.98, 2), '50-MA'))
+
+        if ma_200 and ma_200 < close_price:
+            candidates.append((round(ma_200 * 0.97, 2), '200-MA'))
+
+        if not candidates:
+            return None, None
+
+        # Pick the highest (tightest) stop among the candidates
+        best = max(candidates, key=lambda c: c[0])
+        return best
+
+    def generate_holder_signal(self, metrics):
+        """
+        Generate Hold/Sell signal for existing stockholders, with two
+        stop-loss tiers.
+
+        SELL triggers (Minervini's selling rules):
+        - Stage 4 (confirmed downtrend)
+        - Distribution: price below 50-day MA in Stage 3 or 4
+        - Climax top: price 70 %+ above 200-day MA
+        - Trend breakdown: price below 200-day MA and MA trending down
+        - Severe weakness: RS below 30
+
+        HOLD otherwise, with contextual strength:
+        - Strong: Stage 2, most criteria passing, RS 70+
+        - Moderate: Some criteria slipping but uptrend intact
+        - Caution: Approaching sell triggers, tighten stops
+
+        Args:
+            metrics: Dict of all calculated metrics for a stock
+
+        Returns:
+            dict with:
+            - holder_signal: 'HOLD' or 'SELL'
+            - holder_signal_reasons: list of reason strings
+            - holder_stop_initial: tight stop for new positions
+            - holder_stop_trailing: trailing MA-based stop
+            - holder_trailing_method: label of trailing MA used
+        """
+        close = metrics['close_price']
+        stage = metrics['stage']
+        rs = metrics.get('relative_strength')
+        ma_50 = metrics.get('ma_50')
+        ma_200 = metrics.get('ma_200')
+        ma_200_trend = metrics.get('ma_200_trend_20d')
+        ema_10 = metrics.get('ema_10')
+        ema_21 = metrics.get('ema_21')
+        atr_14 = metrics.get('atr_14')
+        last_contraction_low = metrics.get('last_contraction_low')
+        swing_low = metrics.get('swing_low')
+        criteria_count = metrics.get('criteria_passed', 0) or 0
+        percent_from_52w_high = metrics.get('percent_from_52w_high')
+
+        signal = 'HOLD'
+        reasons = []
+
+        # ---- SELL triggers ----
+
+        # 1. Stage 4: confirmed downtrend
+        if stage == 4:
+            signal = 'SELL'
+            reasons.append('Stage 4 downtrend -- exit position')
+
+        # 2. Distribution: price below 50-MA in Stage 3/4
+        if ma_50 and close < ma_50 and stage in (3, 4):
+            if signal != 'SELL':
+                signal = 'SELL'
+            reasons.append(f'Price below 50-day MA in Stage {stage} (distribution)')
+
+        # 3. Climax top: extremely overextended
+        if ma_200 and ma_200 > 0:
+            pct_above_200 = ((close - ma_200) / ma_200) * 100
+            if pct_above_200 >= 70:
+                if signal != 'SELL':
+                    signal = 'SELL'
+                reasons.append(f'Climax top -- price {pct_above_200:.0f}% above 200-day MA')
+
+        # 4. Trend breakdown: below 200-MA and MA declining
+        if ma_200 and close < ma_200 and ma_200_trend is not None and ma_200_trend < 0:
+            if signal != 'SELL':
+                signal = 'SELL'
+            reasons.append('Price below declining 200-day MA -- trend broken')
+
+        # 5. Severe weakness
+        if rs is not None and rs < 30:
+            if signal != 'SELL':
+                signal = 'SELL'
+            reasons.append(f'Very weak relative strength ({rs:.0f})')
+
+        # ---- HOLD reasons (if not SELL) ----
+
+        if signal == 'HOLD':
+            # Strong hold
+            if stage == 2 and criteria_count >= 8 and rs is not None and rs >= 70:
+                reasons.append('Strong hold -- Stage 2 uptrend intact')
+                if rs >= 80:
+                    reasons.append(f'Excellent RS ({rs:.0f})')
+                if criteria_count == 9:
+                    reasons.append('All 9 trend criteria passing')
+
+            # Moderate hold
+            elif stage == 2 and criteria_count >= 5:
+                reasons.append('Moderate hold -- uptrend intact but some criteria slipping')
+                if rs is not None and 50 <= rs < 70:
+                    reasons.append(f'RS adequate but fading ({rs:.0f})')
+                if criteria_count < 8:
+                    reasons.append(f'{criteria_count}/9 criteria passing')
+
+            # Caution hold
+            elif stage in (1, 3):
+                reasons.append(f'Caution -- Stage {stage} ({"basing" if stage == 1 else "topping"}), tighten stops')
+                if ma_50 and close < ma_50:
+                    reasons.append('Price below 50-day MA -- watch closely')
+                if rs is not None and rs < 50:
+                    reasons.append(f'Weakening RS ({rs:.0f})')
+                if percent_from_52w_high is not None and percent_from_52w_high < -20:
+                    reasons.append(f'{abs(percent_from_52w_high):.0f}% off 52-week high')
+
+            else:
+                reasons.append('Hold -- monitor for deterioration')
+
+            if not reasons:
+                reasons.append('Hold position')
+
+        # ---- Calculate stop levels ----
+
+        # Initial stop: tight, structure-based (for new positions)
+        holder_stop_initial = self.calculate_initial_stop(
+            close, atr_14, ema_21, last_contraction_low, swing_low
+        )
+
+        # Trailing stop: MA-based (for existing holders)
+        holder_stop_trailing, trailing_method = self.calculate_trailing_stop(
+            close, ema_10, ema_21, ma_50, ma_200
+        )
+
+        return {
+            'holder_signal': signal,
+            'holder_signal_reasons': reasons,
+            'holder_stop_initial': holder_stop_initial,
+            'holder_stop_trailing': holder_stop_trailing,
+            'holder_trailing_method': trailing_method,
         }

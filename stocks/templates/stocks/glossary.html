@@ -45,6 +45,53 @@
                     </div>
                 </div>
 
+                <!-- Holder Signals (for existing stockholders) -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#holderSignals">
+                            Holder Signals (HOLD / SELL)
+                        </button>
+                    </h2>
+                    <div id="holderSignals" class="accordion-collapse collapse" data-bs-parent="#glossaryAccordion">
+                        <div class="accordion-body">
+                            <p><strong>Parallel signal system for existing stockholders.</strong> While BUY/WAIT/PASS signals guide prospective buyers, HOLD/SELL signals help current holders decide whether to maintain or exit positions.</p>
+                            
+                            <dl>
+                                <dt>HOLD</dt>
+                                <dd>The stock's uptrend remains intact. Continue holding the position. Use the provided stop-loss levels to protect your capital. Three tiers:
+                                    <ul>
+                                        <li><strong>Strong Hold:</strong> Stage 2, 8+ criteria passing, RS 70+. Excellent conditions.</li>
+                                        <li><strong>Moderate Hold:</strong> Stage 2, 5+ criteria passing. Uptrend intact but some slippage.</li>
+                                        <li><strong>Caution Hold:</strong> Stage 1 or 3. Watch closely and tighten stops.</li>
+                                    </ul>
+                                </dd>
+
+                                <dt>SELL</dt>
+                                <dd>The stock's trend has deteriorated. Consider exiting the position. SELL triggers include:
+                                    <ul>
+                                        <li><strong>Stage 4:</strong> Confirmed downtrend.</li>
+                                        <li><strong>Distribution:</strong> Price below 50-day MA in Stage 3 or 4.</li>
+                                        <li><strong>Climax Top:</strong> Price 70%+ above 200-day MA (extreme overextension).</li>
+                                        <li><strong>Trend Breakdown:</strong> Price below declining 200-day MA.</li>
+                                        <li><strong>Severe Weakness:</strong> Relative Strength below 30.</li>
+                                    </ul>
+                                </dd>
+
+                                <dt>Initial Stop (new positions)</dt>
+                                <dd>A tight stop loss for recently-acquired positions, calculated relative to current price. Uses the same multi-method approach as the buyer's stop loss (ATR, EMA, VCP low, swing low), clamped between 3-8%. This is your hard floor for new entries.</dd>
+
+                                <dt>Trailing Stop (existing positions)</dt>
+                                <dd>A more forgiving stop for longer-held positions, based on rising moving averages. The system selects the highest MA below the current price (10-EMA, 21-EMA, 50-MA, or 200-MA) with a small buffer (1-2%). This gives winners room to run while protecting accumulated gains. The label (e.g., "10-EMA") shows which MA is used.</dd>
+
+                                <dt>Holder Signal Transition</dt>
+                                <dd>When a stock transitions from HOLD to SELL, a notification is generated for watchlist holders. This alerts you to deteriorating conditions before a full breakdown.</dd>
+                            </dl>
+                            
+                            <p class="text-muted mt-3"><em>Based on Mark Minervini's selling rules: protect capital, cut losses quickly, let winners run, and recognize distribution and climax tops.</em></p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Stage Analysis -->
                 <div class="accordion-item">
                     <h2 class="accordion-header">

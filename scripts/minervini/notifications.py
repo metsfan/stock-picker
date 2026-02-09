@@ -4,6 +4,7 @@ Notification manager for Minervini analysis.
 Detects actionable events for watchlist stocks and persists them
 as notification rows:
   - WAIT_TO_BUY:       Signal upgraded from WAIT to BUY
+  - HOLD_TO_SELL:      Holder signal changed from HOLD to SELL
   - METRIC_CHANGE:     Significant change in stage, VCP, RS, etc.
   - EARNINGS_SURPRISE: Tremendous earnings surprise in last 24 hours
 """
@@ -56,6 +57,7 @@ class NotificationManager:
             prev = db.get_previous_metrics(symbol, analysis_date)
 
             self._check_wait_to_buy(symbol, new, prev, analysis_date)
+            self._check_hold_to_sell(symbol, new, prev, analysis_date)
             self._check_metric_changes(symbol, new, prev, analysis_date)
             self._check_earnings_surprise(symbol, analysis_date)
 
@@ -76,11 +78,12 @@ class NotificationManager:
 
         type_labels = {
             'WAIT_TO_BUY': '🟢 WAIT → BUY',
+            'HOLD_TO_SELL': '🚨 HOLD → SELL',
             'METRIC_CHANGE': '🔄 METRIC CHANGES',
             'EARNINGS_SURPRISE': '💰 EARNINGS SURPRISES',
         }
 
-        for ntype in ('WAIT_TO_BUY', 'METRIC_CHANGE', 'EARNINGS_SURPRISE'):
+        for ntype in ('WAIT_TO_BUY', 'HOLD_TO_SELL', 'METRIC_CHANGE', 'EARNINGS_SURPRISE'):
             items = by_type.get(ntype, [])
             if not items:
                 continue
@@ -136,6 +139,61 @@ class NotificationManager:
                     'stop_loss': float(new['stop_loss']) if new.get('stop_loss') else None,
                     'sell_target_primary': float(new['sell_target_primary']) if new.get('sell_target_primary') else None,
                     'signal_reasons': new.get('signal_reasons'),
+                },
+            })
+
+    def _check_hold_to_sell(self, symbol, new, prev, date):
+        """Create notification when holder signal changes from HOLD to SELL."""
+        if prev is None:
+            return
+
+        prev_holder = prev.get('holder_signal')
+        new_holder = new.get('holder_signal')
+
+        if prev_holder == 'HOLD' and new_holder == 'SELL':
+            stage = new.get('stage')
+            stage_str = f"Stage {stage}" if stage is not None else "Unknown stage"
+            
+            rs_val = new.get('relative_strength')
+            rs_str = f", RS={rs_val:.0f}" if rs_val is not None else ""
+            
+            # Extract primary sell reason from reasons list
+            reasons = new.get('holder_signal_reasons', '')
+            primary_reason = reasons.split(';')[0].strip() if reasons else "Technical deterioration"
+            
+            initial_stop = new.get('holder_stop_initial')
+            trailing_stop = new.get('holder_stop_trailing')
+            stop_str = ""
+            if initial_stop:
+                stop_str = f" Initial stop: ${initial_stop:.2f}"
+            if trailing_stop:
+                method = new.get('holder_trailing_method', '')
+                method_str = f" ({method})" if method else ""
+                if stop_str:
+                    stop_str += f", Trailing: ${trailing_stop:.2f}{method_str}"
+                else:
+                    stop_str = f" Trailing stop: ${trailing_stop:.2f}{method_str}"
+
+            message = (
+                f"Holder signal changed to SELL - {primary_reason}. "
+                f"{stage_str}{rs_str}.{stop_str}"
+            )
+
+            self._pending.append({
+                'symbol': symbol,
+                'date': date,
+                'notification_type': 'HOLD_TO_SELL',
+                'title': f"{symbol} holder signal changed to SELL",
+                'message': message,
+                'metadata': {
+                    'previous_holder_signal': prev_holder,
+                    'new_holder_signal': 'SELL',
+                    'stage': stage,
+                    'relative_strength': float(rs_val) if rs_val is not None else None,
+                    'holder_stop_initial': float(initial_stop) if initial_stop else None,
+                    'holder_stop_trailing': float(trailing_stop) if trailing_stop else None,
+                    'holder_trailing_method': new.get('holder_trailing_method'),
+                    'holder_signal_reasons': reasons,
                 },
             })
 

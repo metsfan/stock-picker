@@ -384,6 +384,14 @@ class MinerviniAnalyzer:
             metrics['risk_reward_ratio'] = None
             metrics['risk_percent'] = None
 
+        # Generate Hold/Sell signal for existing stockholders
+        holder_data = self.signals.generate_holder_signal(metrics)
+        metrics['holder_signal'] = holder_data['holder_signal']
+        metrics['holder_signal_reasons'] = '; '.join(holder_data['holder_signal_reasons'])
+        metrics['holder_stop_initial'] = holder_data['holder_stop_initial']
+        metrics['holder_stop_trailing'] = holder_data['holder_stop_trailing']
+        metrics['holder_trailing_method'] = holder_data['holder_trailing_method']
+
         return metrics
 
     def analyze_date(self, date):

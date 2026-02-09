@@ -836,6 +836,69 @@
                 </div>
                 {% endif %}
 
+                <!-- Holder Signal Card (for existing stockholders) -->
+                {% if metrics.holder_signal %}
+                <div class="card mb-3">
+                    <div class="card-header {% if metrics.holder_signal == 'SELL' %}bg-danger{% else %}bg-success{% endif %} text-white">
+                        <h5 class="mb-0">{{ metrics.holder_signal_icon }} Holder Signal: {{ metrics.holder_signal }}</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if metrics.holder_signal_reasons_list %}
+                        <div class="mb-3">
+                            <h6 class="text-muted mb-2">Analysis:</h6>
+                            <ul class="mb-0">
+                                {% for reason in metrics.holder_signal_reasons_list %}
+                                <li>{{ reason }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        
+                        {% if metrics.has_holder_stops %}
+                        <table class="table table-sm">
+                            {% if metrics.holder_stop_initial %}
+                            <tr>
+                                <td><strong>Initial Stop (new positions):</strong></td>
+                                <td class="text-end">
+                                    <strong class="text-danger">${{ metrics.holder_stop_initial|floatformat:2 }}</strong>
+                                    {% if metrics.close_price %}
+                                    <small class="text-muted">
+                                        ({{ ((metrics.holder_stop_initial - metrics.close_price) / metrics.close_price * 100)|floatformat:1 }}%)
+                                    </small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.holder_stop_trailing %}
+                            <tr>
+                                <td><strong>Trailing Stop (existing holders):</strong></td>
+                                <td class="text-end">
+                                    <strong class="text-warning">${{ metrics.holder_stop_trailing|floatformat:2 }}</strong>
+                                    {% if metrics.holder_trailing_method %}
+                                    <small class="badge bg-secondary">{{ metrics.holder_trailing_method }}</small>
+                                    {% endif %}
+                                    {% if metrics.close_price %}
+                                    <small class="text-muted">
+                                        ({{ ((metrics.holder_stop_trailing - metrics.close_price) / metrics.close_price * 100)|floatformat:1 }}%)
+                                    </small>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                        {% endif %}
+                        
+                        <small class="text-muted">
+                            {% if metrics.holder_signal == 'HOLD' %}
+                            Continue holding position. Use initial stop for new entries, trailing stop to protect gains on existing positions.
+                            {% else %}
+                            Consider exiting position. Trend deterioration or distribution detected.
+                            {% endif %}
+                        </small>
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- Moving Averages Card -->
                 <div class="card">
                     <div class="card-header bg-warning">

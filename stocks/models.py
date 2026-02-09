@@ -94,7 +94,7 @@ class MinerviniMetrics(models.Model):
     primary_base_status = models.CharField(max_length=20, null=True, blank=True)
     days_since_ipo = models.IntegerField(null=True)
     
-    # Signal system (Buy/Wait/Pass)
+    # Signal system (Buy/Wait/Pass) for prospective buyers
     signal = models.CharField(max_length=10, null=True, blank=True)
     signal_reasons = models.TextField(null=True, blank=True)
     entry_low = models.DecimalField(max_digits=10, decimal_places=2, null=True)
@@ -106,6 +106,13 @@ class MinerviniMetrics(models.Model):
     partial_profit_at = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     risk_reward_ratio = models.DecimalField(max_digits=5, decimal_places=1, null=True)
     risk_percent = models.DecimalField(max_digits=5, decimal_places=1, null=True)
+    
+    # Holder signal system (Hold/Sell) for existing stockholders
+    holder_signal = models.CharField(max_length=10, null=True, blank=True)
+    holder_signal_reasons = models.TextField(null=True, blank=True)
+    holder_stop_initial = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    holder_stop_trailing = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+    holder_trailing_method = models.CharField(max_length=20, null=True, blank=True)
 
     class Meta:
         db_table = 'minervini_metrics'
@@ -258,6 +265,36 @@ class MinerviniMetrics(models.Model):
         return None
     
     @property
+    def holder_signal_badge_class(self):
+        """Bootstrap badge class for holder signal display"""
+        classes = {
+            'HOLD': 'bg-success',
+            'SELL': 'bg-danger',
+        }
+        return classes.get(self.holder_signal, 'bg-secondary')
+    
+    @property
+    def holder_signal_icon(self):
+        """Emoji icon for holder signal"""
+        icons = {
+            'HOLD': '✅',
+            'SELL': '🚨',
+        }
+        return icons.get(self.holder_signal, '⚪')
+    
+    @property
+    def holder_signal_reasons_list(self):
+        """Holder signal reasons as a list (split by semicolons)"""
+        if not self.holder_signal_reasons:
+            return []
+        return [r.strip() for r in self.holder_signal_reasons.split(';') if r.strip()]
+    
+    @property
+    def has_holder_stops(self):
+        """Whether this stock has computed holder stop levels"""
+        return self.holder_stop_initial is not None or self.holder_stop_trailing is not None
+    
+    @property
     def primary_base_status_display(self):
         """Human-readable primary base status"""
         labels = {
@@ -377,6 +414,7 @@ class Notification(models.Model):
 
     NOTIFICATION_TYPES = [
         ('WAIT_TO_BUY', 'Wait to Buy'),
+        ('HOLD_TO_SELL', 'Hold to Sell'),
         ('METRIC_CHANGE', 'Metric Change'),
         ('EARNINGS_SURPRISE', 'Earnings Surprise'),
     ]
@@ -405,6 +443,7 @@ class Notification(models.Model):
         """Bootstrap badge class for notification type."""
         classes = {
             'WAIT_TO_BUY': 'bg-success',
+            'HOLD_TO_SELL': 'bg-danger',
             'METRIC_CHANGE': 'bg-info',
             'EARNINGS_SURPRISE': 'bg-warning text-dark',
         }
@@ -415,6 +454,7 @@ class Notification(models.Model):
         """Emoji icon for notification type."""
         icons = {
             'WAIT_TO_BUY': '🟢',
+            'HOLD_TO_SELL': '🚨',
             'METRIC_CHANGE': '🔄',
             'EARNINGS_SURPRISE': '💰',
         }
@@ -425,6 +465,7 @@ class Notification(models.Model):
         """Human-readable notification type."""
         labels = {
             'WAIT_TO_BUY': 'Wait → Buy',
+            'HOLD_TO_SELL': 'Hold → Sell',
             'METRIC_CHANGE': 'Metric Change',
             'EARNINGS_SURPRISE': 'Earnings Surprise',
         }

@@ -93,16 +93,19 @@ class DatabaseManager:
              earnings_acceleration, avg_eps_surprise, earnings_beat_rate,
              has_upcoming_earnings, days_until_earnings,
              earnings_quality_score, passes_earnings,
-             is_new_issue, has_primary_base, primary_base_weeks,
+                     is_new_issue, has_primary_base, primary_base_weeks,
              primary_base_correction_pct, primary_base_status, days_since_ipo,
              signal, signal_reasons,
              entry_low, entry_high, stop_loss,
              sell_target_conservative, sell_target_primary, sell_target_aggressive,
-             partial_profit_at, risk_reward_ratio, risk_percent)
+             partial_profit_at, risk_reward_ratio, risk_percent,
+             holder_signal, holder_signal_reasons,
+             holder_stop_initial, holder_stop_trailing, holder_trailing_method)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -167,7 +170,12 @@ class DatabaseManager:
                 sell_target_aggressive = EXCLUDED.sell_target_aggressive,
                 partial_profit_at = EXCLUDED.partial_profit_at,
                 risk_reward_ratio = EXCLUDED.risk_reward_ratio,
-                risk_percent = EXCLUDED.risk_percent
+                risk_percent = EXCLUDED.risk_percent,
+                holder_signal = EXCLUDED.holder_signal,
+                holder_signal_reasons = EXCLUDED.holder_signal_reasons,
+                holder_stop_initial = EXCLUDED.holder_stop_initial,
+                holder_stop_trailing = EXCLUDED.holder_stop_trailing,
+                holder_trailing_method = EXCLUDED.holder_trailing_method
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -233,7 +241,12 @@ class DatabaseManager:
             metrics['sell_target_aggressive'],
             metrics['partial_profit_at'],
             metrics['risk_reward_ratio'],
-            metrics['risk_percent']
+            metrics['risk_percent'],
+            metrics['holder_signal'],
+            metrics['holder_signal_reasons'],
+            metrics['holder_stop_initial'],
+            metrics['holder_stop_trailing'],
+            metrics['holder_trailing_method']
         ))
 
         self.conn.commit()
@@ -304,11 +317,14 @@ class DatabaseManager:
                      signal, signal_reasons,
                      entry_low, entry_high, stop_loss,
                      sell_target_conservative, sell_target_primary, sell_target_aggressive,
-                     partial_profit_at, risk_reward_ratio, risk_percent)
+                     partial_profit_at, risk_reward_ratio, risk_percent,
+                     holder_signal, holder_signal_reasons,
+                     holder_stop_initial, holder_stop_trailing, holder_trailing_method)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s)
                     ON CONFLICT (symbol, date)
                     DO UPDATE SET
                         close_price = EXCLUDED.close_price,
@@ -373,7 +389,12 @@ class DatabaseManager:
                         sell_target_aggressive = EXCLUDED.sell_target_aggressive,
                         partial_profit_at = EXCLUDED.partial_profit_at,
                         risk_reward_ratio = EXCLUDED.risk_reward_ratio,
-                        risk_percent = EXCLUDED.risk_percent
+                        risk_percent = EXCLUDED.risk_percent,
+                        holder_signal = EXCLUDED.holder_signal,
+                        holder_signal_reasons = EXCLUDED.holder_signal_reasons,
+                        holder_stop_initial = EXCLUDED.holder_stop_initial,
+                        holder_stop_trailing = EXCLUDED.holder_stop_trailing,
+                        holder_trailing_method = EXCLUDED.holder_trailing_method
                 """, (
                     metrics['symbol'],
                     metrics['date'],
@@ -439,7 +460,12 @@ class DatabaseManager:
                     metrics['sell_target_aggressive'],
                     metrics['partial_profit_at'],
                     metrics['risk_reward_ratio'],
-                    metrics['risk_percent']
+                    metrics['risk_percent'],
+                    metrics['holder_signal'],
+                    metrics['holder_signal_reasons'],
+                    metrics['holder_stop_initial'],
+                    metrics['holder_stop_trailing'],
+                    metrics['holder_trailing_method']
                 ))
 
             self.conn.commit()

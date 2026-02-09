@@ -402,3 +402,18 @@ ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS days_since_ipo INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_is_new_issue ON minervini_metrics(is_new_issue);
 CREATE INDEX IF NOT EXISTS idx_primary_base_status ON minervini_metrics(primary_base_status);
+
+-- ============================================================================
+-- 2026-02-09: Holder Signal system (HOLD/SELL) for existing stockholders
+-- Parallel to the buyer signal (BUY/WAIT/PASS). Provides two stop-loss tiers:
+-- an initial stop for new positions and a trailing stop for existing holders.
+-- ============================================================================
+
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS holder_signal VARCHAR(10);           -- HOLD / SELL
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS holder_signal_reasons TEXT;           -- Explanation for the holder signal
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS holder_stop_initial NUMERIC(10, 2);  -- Tight stop for new positions (3-8% below price)
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS holder_stop_trailing NUMERIC(10, 2); -- Trailing stop based on rising MAs
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS holder_trailing_method VARCHAR(20);  -- Which MA is used (10-EMA, 21-EMA, 50-MA, 200-MA)
+
+CREATE INDEX IF NOT EXISTS idx_holder_signal ON minervini_metrics(holder_signal);
+CREATE INDEX IF NOT EXISTS idx_holder_signal_date ON minervini_metrics(date, holder_signal);
