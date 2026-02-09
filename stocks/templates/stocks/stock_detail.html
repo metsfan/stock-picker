@@ -861,9 +861,9 @@
                                 <td><strong>Initial Stop (new positions):</strong></td>
                                 <td class="text-end">
                                     <strong class="text-danger">${{ metrics.holder_stop_initial|floatformat:2 }}</strong>
-                                    {% if metrics.close_price %}
+                                    {% if metrics.holder_stop_initial_percent %}
                                     <small class="text-muted">
-                                        ({{ ((metrics.holder_stop_initial - metrics.close_price) / metrics.close_price * 100)|floatformat:1 }}%)
+                                        ({{ metrics.holder_stop_initial_percent|floatformat:1 }}%)
                                     </small>
                                     {% endif %}
                                 </td>
@@ -877,9 +877,9 @@
                                     {% if metrics.holder_trailing_method %}
                                     <small class="badge bg-secondary">{{ metrics.holder_trailing_method }}</small>
                                     {% endif %}
-                                    {% if metrics.close_price %}
+                                    {% if metrics.holder_stop_trailing_percent %}
                                     <small class="text-muted">
-                                        ({{ ((metrics.holder_stop_trailing - metrics.close_price) / metrics.close_price * 100)|floatformat:1 }}%)
+                                        ({{ metrics.holder_stop_trailing_percent|floatformat:1 }}%)
                                     </small>
                                     {% endif %}
                                 </td>

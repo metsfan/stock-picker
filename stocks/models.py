@@ -295,6 +295,20 @@ class MinerviniMetrics(models.Model):
         return self.holder_stop_initial is not None or self.holder_stop_trailing is not None
     
     @property
+    def holder_stop_initial_percent(self):
+        """Percentage distance from current price to initial stop"""
+        if self.holder_stop_initial and self.close_price:
+            return float((self.holder_stop_initial - self.close_price) / self.close_price * 100)
+        return None
+    
+    @property
+    def holder_stop_trailing_percent(self):
+        """Percentage distance from current price to trailing stop"""
+        if self.holder_stop_trailing and self.close_price:
+            return float((self.holder_stop_trailing - self.close_price) / self.close_price * 100)
+        return None
+    
+    @property
     def primary_base_status_display(self):
         """Human-readable primary base status"""
         labels = {
