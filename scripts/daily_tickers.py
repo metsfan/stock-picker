@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Fetch detailed ticker information from Massive API for all stocks in the most recent data file.
-Makes 10 concurrent requests with 100ms delay between batches.
+Fetch all ticker information from Massive API using the tickers endpoint with pagination.
+Iteratively fetches all active stock tickers and stores them in the database.
 """
 
 import requests
 import psycopg2
-import csv
 from pathlib import Path
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import sys
 
@@ -28,9 +26,8 @@ def _load_api_key():
 
 # API Configuration
 API_KEY = _load_api_key()
-API_BASE_URL = f"https://api.massive.com/v3/reference/tickers"
-BATCH_SIZE = 10
-BATCH_DELAY_MS = 100  # milliseconds between batches
+API_BASE_URL = "https://api.massive.com/v3/reference/tickers"
+REQUEST_DELAY_MS = 200  # milliseconds between requests
 
 
 def get_db_connection():
@@ -49,178 +46,112 @@ def get_db_connection():
         return None
 
 
-def get_latest_data_file():
-    """Find the most recent CSV file in the day_aggs directory."""
-    day_aggs_dir = Path("../day_aggs")
-    
-    if not day_aggs_dir.exists():
-        print(f"Error: Directory {day_aggs_dir} does not exist")
-        return None
-    
-    # Get all CSV files and sort by date in filename (YYYY-MM-DD.csv)
-    csv_files = sorted(day_aggs_dir.glob("*.csv"), reverse=True)
-    
-    # Filter out empty files (non-trading days)
-    for csv_file in csv_files:
-        if csv_file.stat().st_size > 0:
-            return csv_file
-    
-    print("Error: No valid data files found")
-    return None
-
-
-def get_unique_symbols(csv_file):
-    """Extract unique ticker symbols from the CSV file."""
-    symbols = set()
-    
-    try:
-        with open(csv_file, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                ticker = row.get('ticker', '').strip().upper()
-                if ticker:
-                    symbols.add(ticker)
-        
-        return sorted(list(symbols))
-    except Exception as e:
-        print(f"Error reading CSV file: {e}")
-        return []
-
-
-def fetch_ticker_details(ticker):
+def fetch_all_tickers():
     """
-    Fetch ticker details from Massive API.
+    Fetch all active stock tickers from Massive API using pagination.
     
-    Args:
-        ticker: Stock ticker symbol
-        
     Returns:
-        tuple: (ticker, data_dict) or (ticker, None) on error
+        list: List of ticker dictionaries containing ticker information
     """
-    url = f"{API_BASE_URL}/{ticker}?apiKey={API_KEY}"
+    all_tickers = []
+    next_url = f"{API_BASE_URL}?market=stocks&active=true&limit=1000&apiKey={API_KEY}"
+    page_count = 0
     
-    try:
-        response = requests.get(url, timeout=10)
+    print("   Fetching tickers from API...")
+    
+    while next_url:
+        page_count += 1
         
-        if response.status_code == 200:
-            data = response.json()
+        try:
+            response = requests.get(next_url, timeout=30)
             
-            if data.get('status') == 'OK' and 'results' in data:
-                return (ticker, data['results'])
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get('status') == 'OK' and 'results' in data:
+                    results = data['results']
+                    all_tickers.extend(results)
+                    print(f"   Page {page_count}: Fetched {len(results)} tickers (total: {len(all_tickers)})")
+                    
+                    # Check for next page
+                    next_url = data.get('next_url')
+                    if next_url:
+                        # Add API key to next_url if not present
+                        if 'apiKey=' not in next_url:
+                            next_url += f"&apiKey={API_KEY}"
+                        # Add delay between requests
+                        time.sleep(REQUEST_DELAY_MS / 1000.0)
+                else:
+                    print(f"   ⚠ API returned status {data.get('status', 'UNKNOWN')}")
+                    break
             else:
-                print(f"  ⚠ {ticker}: API returned status {data.get('status', 'UNKNOWN')}")
-                return (ticker, None)
-        else:
-            print(f"  ✗ {ticker}: HTTP {response.status_code}")
-            return (ticker, None)
-            
-    except requests.exceptions.Timeout:
-        print(f"  ✗ {ticker}: Request timeout")
-        return (ticker, None)
-    except Exception as e:
-        print(f"  ✗ {ticker}: Error - {str(e)[:50]}")
-        return (ticker, None)
+                print(f"   ✗ HTTP {response.status_code}")
+                break
+                
+        except requests.exceptions.Timeout:
+            print(f"   ✗ Request timeout on page {page_count}")
+            break
+        except Exception as e:
+            print(f"   ✗ Error fetching page {page_count}: {str(e)[:100]}")
+            break
+    
+    return all_tickers
 
 
-def upsert_ticker_details(conn, symbol, details):
+def upsert_ticker(conn, ticker_data):
     """
-    Insert or update ticker details in the database.
+    Insert or update ticker information in the database.
     
     Args:
         conn: Database connection
-        symbol: Stock ticker symbol
-        details: Dictionary of ticker details from API
+        ticker_data: Dictionary of ticker data from API
         
     Returns:
         bool: True if successful, False otherwise
     """
-    if not details:
+    if not ticker_data:
         return False
     
     try:
         cursor = conn.cursor()
         
-        # Extract address fields
-        address = details.get('address', {})
+        symbol = ticker_data.get('ticker')
         
-        # Prepare the upsert query
+        # Prepare the upsert query with only fields available from the list endpoint
         query = """
             INSERT INTO ticker_details (
-                symbol, name, description, market_cap, homepage_url, 
-                logo_url, icon_url, primary_exchange, locale, market,
-                currency_name, active, list_date, sic_code, sic_description,
-                total_employees, share_class_shares_outstanding, weighted_shares_outstanding,
-                cik, composite_figi, share_class_figi, phone_number, ticker_type,
-                round_lot, address_line1, address_city, address_state, 
-                address_postal_code, updated_at
+                symbol, name, primary_exchange, locale, market,
+                currency_name, active, cik, composite_figi, share_class_figi,
+                ticker_type, updated_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (symbol) DO UPDATE SET
                 name = EXCLUDED.name,
-                description = EXCLUDED.description,
-                market_cap = EXCLUDED.market_cap,
-                homepage_url = EXCLUDED.homepage_url,
-                logo_url = EXCLUDED.logo_url,
-                icon_url = EXCLUDED.icon_url,
                 primary_exchange = EXCLUDED.primary_exchange,
                 locale = EXCLUDED.locale,
                 market = EXCLUDED.market,
                 currency_name = EXCLUDED.currency_name,
                 active = EXCLUDED.active,
-                list_date = EXCLUDED.list_date,
-                sic_code = EXCLUDED.sic_code,
-                sic_description = EXCLUDED.sic_description,
-                total_employees = EXCLUDED.total_employees,
-                share_class_shares_outstanding = EXCLUDED.share_class_shares_outstanding,
-                weighted_shares_outstanding = EXCLUDED.weighted_shares_outstanding,
                 cik = EXCLUDED.cik,
                 composite_figi = EXCLUDED.composite_figi,
                 share_class_figi = EXCLUDED.share_class_figi,
-                phone_number = EXCLUDED.phone_number,
                 ticker_type = EXCLUDED.ticker_type,
-                round_lot = EXCLUDED.round_lot,
-                address_line1 = EXCLUDED.address_line1,
-                address_city = EXCLUDED.address_city,
-                address_state = EXCLUDED.address_state,
-                address_postal_code = EXCLUDED.address_postal_code,
                 updated_at = EXCLUDED.updated_at
         """
         
-        # Extract branding URLs
-        branding = details.get('branding', {})
-        
         cursor.execute(query, (
             symbol,
-            details.get('name'),
-            details.get('description'),
-            details.get('market_cap'),
-            details.get('homepage_url'),
-            branding.get('logo_url'),
-            branding.get('icon_url'),
-            details.get('primary_exchange'),
-            details.get('locale'),
-            details.get('market'),
-            details.get('currency_name'),
-            details.get('active'),
-            details.get('list_date'),
-            details.get('sic_code'),
-            details.get('sic_description'),
-            details.get('total_employees'),
-            details.get('share_class_shares_outstanding'),
-            details.get('weighted_shares_outstanding'),
-            details.get('cik'),
-            details.get('composite_figi'),
-            details.get('share_class_figi'),
-            details.get('phone_number'),
-            details.get('type'),
-            details.get('round_lot'),
-            address.get('address1'),
-            address.get('city'),
-            address.get('state'),
-            address.get('postal_code'),
+            ticker_data.get('name'),
+            ticker_data.get('primary_exchange'),
+            ticker_data.get('locale'),
+            ticker_data.get('market'),
+            ticker_data.get('currency_name'),
+            ticker_data.get('active'),
+            ticker_data.get('cik'),
+            ticker_data.get('composite_figi'),
+            ticker_data.get('share_class_figi'),
+            ticker_data.get('type'),
             datetime.now()
         ))
         
@@ -229,72 +160,30 @@ def upsert_ticker_details(conn, symbol, details):
         return True
         
     except Exception as e:
+        symbol = ticker_data.get('ticker', 'UNKNOWN')
         print(f"  Error saving {symbol} to database: {e}")
         conn.rollback()
         return False
 
 
-def process_batch(conn, symbols_batch):
-    """
-    Process a batch of symbols concurrently.
-    
-    Args:
-        conn: Database connection
-        symbols_batch: List of symbols to process
-        
-    Returns:
-        dict: Statistics of the batch processing
-    """
-    stats = {'success': 0, 'failed': 0}
-    
-    with ThreadPoolExecutor(max_workers=BATCH_SIZE) as executor:
-        # Submit all tasks
-        futures = {executor.submit(fetch_ticker_details, symbol): symbol 
-                   for symbol in symbols_batch}
-        
-        # Process results as they complete
-        for future in as_completed(futures):
-            symbol, details = future.result()
-            
-            if details:
-                if upsert_ticker_details(conn, symbol, details):
-                    print(f"  ✓ {symbol}")
-                    stats['success'] += 1
-                else:
-                    stats['failed'] += 1
-            else:
-                stats['failed'] += 1
-    
-    return stats
-
-
 def main():
-    """Main function to orchestrate the ticker details fetch."""
+    """Main function to orchestrate the ticker fetch and database update."""
     print("=" * 80)
-    print("Fetching Ticker Details from Massive API")
+    print("Fetching All Tickers from Massive API")
     print("=" * 80)
     
-    # Find the latest data file
-    print("\n1. Finding latest data file...")
-    latest_file = get_latest_data_file()
+    # Fetch all tickers from API
+    print("\n1. Fetching all active stock tickers from API...")
+    tickers = fetch_all_tickers()
     
-    if not latest_file:
+    if not tickers:
+        print("   Error: No tickers fetched from API")
         sys.exit(1)
     
-    print(f"   ✓ Using: {latest_file.name}")
-    
-    # Get unique symbols
-    print("\n2. Extracting unique symbols...")
-    symbols = get_unique_symbols(latest_file)
-    
-    if not symbols:
-        print("   Error: No symbols found")
-        sys.exit(1)
-    
-    print(f"   ✓ Found {len(symbols)} unique symbols")
+    print(f"   ✓ Fetched {len(tickers)} total tickers")
     
     # Connect to database
-    print("\n3. Connecting to database...")
+    print("\n2. Connecting to database...")
     conn = get_db_connection()
     
     if not conn:
@@ -302,24 +191,22 @@ def main():
     
     print("   ✓ Database connected")
     
-    # Process symbols in batches
-    print(f"\n4. Fetching ticker details ({BATCH_SIZE} concurrent requests)...")
-    print(f"   Batch delay: {BATCH_DELAY_MS}ms")
+    # Process tickers and save to database
+    print("\n3. Saving tickers to database...")
     print("-" * 80)
     
-    total_stats = {'success': 0, 'failed': 0}
-    batches = [symbols[i:i + BATCH_SIZE] for i in range(0, len(symbols), BATCH_SIZE)]
+    stats = {'success': 0, 'failed': 0}
     
-    for i, batch in enumerate(batches, 1):
-        print(f"\nBatch {i}/{len(batches)} ({len(batch)} symbols):")
+    for i, ticker_data in enumerate(tickers, 1):
+        symbol = ticker_data.get('ticker', 'UNKNOWN')
         
-        batch_stats = process_batch(conn, batch)
-        total_stats['success'] += batch_stats['success']
-        total_stats['failed'] += batch_stats['failed']
-        
-        # Delay between batches (except for the last one)
-        if i < len(batches):
-            time.sleep(BATCH_DELAY_MS / 1000.0)
+        if upsert_ticker(conn, ticker_data):
+            stats['success'] += 1
+            if i % 100 == 0:  # Print progress every 100 tickers
+                print(f"   Progress: {i}/{len(tickers)} processed ({stats['success']} successful)")
+        else:
+            stats['failed'] += 1
+            print(f"   ✗ Failed to save: {symbol}")
     
     # Close database connection
     conn.close()
@@ -327,10 +214,10 @@ def main():
     # Print summary
     print("\n" + "=" * 80)
     print("Summary:")
-    print(f"  Total symbols processed: {len(symbols)}")
-    print(f"  Successful: {total_stats['success']}")
-    print(f"  Failed: {total_stats['failed']}")
-    print(f"  Success rate: {(total_stats['success']/len(symbols)*100):.1f}%")
+    print(f"  Total tickers fetched: {len(tickers)}")
+    print(f"  Successfully saved: {stats['success']}")
+    print(f"  Failed: {stats['failed']}")
+    print(f"  Success rate: {(stats['success']/len(tickers)*100):.1f}%")
     print("=" * 80)
 
 
