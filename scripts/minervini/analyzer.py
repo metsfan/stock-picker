@@ -110,7 +110,9 @@ class MinerviniAnalyzer:
         # Get current price
         cursor.execute("""
             SELECT close FROM stock_prices
-            WHERE symbol = %s AND date = %s
+            WHERE symbol = %s
+            ORDER BY date DESC
+            LIMIT 1
         """, (symbol, date))
 
         result = cursor.fetchone()
