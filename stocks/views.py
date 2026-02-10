@@ -572,6 +572,149 @@ Today's date is {datetime.now().strftime('%B %d, %Y')} for context."""
         }, status=500)
 
 
+@require_http_methods(["POST"])
+def ask_ai_agent(request, symbol):
+    """
+    AI Agent endpoint for asking specific questions about a stock.
+    Maintains conversation context and provides targeted answers.
+    """
+    if not config or not hasattr(config, 'CLAUDE_API_KEY'):
+        return JsonResponse({
+            'error': 'API key not configured. Please set CLAUDE_API_KEY in config.py'
+        }, status=500)
+    
+    if config.CLAUDE_API_KEY == "your-api-key-here":
+        return JsonResponse({
+            'error': 'Please replace the placeholder API key in config.py with your actual Anthropic API key'
+        }, status=500)
+    
+    try:
+        from anthropic import Anthropic
+    except ImportError:
+        return JsonResponse({
+            'error': 'Anthropic library not installed. Run: pip install anthropic'
+        }, status=500)
+    
+    # Parse request body
+    try:
+        body = json.loads(request.body)
+        question = body.get('question', '').strip()
+        selected_model = body.get('model', 'claude-sonnet-4-5')
+        conversation_history = body.get('conversation_history', [])
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid request body'}, status=400)
+    
+    if not question:
+        return JsonResponse({'error': 'Question is required'}, status=400)
+    
+    # Validate model selection
+    valid_models = ['claude-opus-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5']
+    if selected_model not in valid_models:
+        selected_model = 'claude-sonnet-4-5'
+    
+    # Get latest metrics for the stock
+    latest_date = MinerviniMetrics.objects.values_list('date', flat=True).order_by('-date').first()
+    
+    if not latest_date:
+        return JsonResponse({'error': 'No data available'}, status=404)
+    
+    try:
+        metrics = MinerviniMetrics.objects.get(symbol=symbol.upper(), date=latest_date)
+    except MinerviniMetrics.DoesNotExist:
+        return JsonResponse({'error': f'No data found for {symbol.upper()}'}, status=404)
+    
+    # Get ticker details
+    try:
+        ticker_details = TickerDetails.objects.get(symbol=symbol.upper())
+        company_name = ticker_details.name or symbol.upper()
+        industry = ticker_details.sic_description or "Unknown"
+    except TickerDetails.DoesNotExist:
+        company_name = symbol.upper()
+        industry = "Unknown"
+    
+    # Build compact stock context
+    context = f"""STOCK CONTEXT for {symbol.upper()} ({company_name}):
+
+Price: ${metrics.close_price} | Industry: {industry}
+Signal: {metrics.signal} | Holder Signal: {metrics.holder_signal or 'N/A'}
+Stage: {metrics.stage} ({metrics.stage_name}) | RS: {metrics.relative_strength or 'N/A'}
+VCP: {'Yes' if metrics.vcp_detected else 'No'} (score: {metrics.vcp_score or 'N/A'})
+Minervini Criteria: {metrics.criteria_passed}/9 passing
+
+Key Metrics:
+- 50/150/200-day MA: ${metrics.ma_50}/{metrics.ma_150}/{metrics.ma_200}
+- From 52w high: {metrics.percent_from_52w_high}%
+- ATR: {metrics.atr_percent}%
+
+Entry Range: ${metrics.entry_low or 'N/A'} - ${metrics.entry_high or 'N/A'}
+Stop Loss: ${metrics.stop_loss or 'N/A'}
+Target: ${metrics.sell_target_primary or 'N/A'}
+
+Holder Stops:
+- Initial: ${metrics.holder_stop_initial or 'N/A'}
+- Trailing: ${metrics.holder_stop_trailing or 'N/A'} ({metrics.holder_trailing_method or 'N/A'})
+
+Signal Reasons: {metrics.signal_reasons or 'None'}
+Holder Reasons: {metrics.holder_signal_reasons or 'None'}
+"""
+
+    if metrics.is_new_issue:
+        context += f"\nNew Issue (IPO): Primary Base Status: {metrics.primary_base_status_display}"
+    
+    # Build the prompt with conversation history
+    system_prompt = f"""You are a professional stock trading assistant. Answer questions about {symbol.upper()} using the provided context.
+
+Guidelines:
+- Be concise and specific
+- Reference the data provided
+- Give actionable insights when asked
+- Acknowledge limitations (e.g., "I don't have access to real-time news")
+- Use Minervini methodology when discussing technicals
+- For entry/exit questions, reference the provided signals and stops
+
+{context}"""
+    
+    # Build messages array
+    messages = []
+    
+    # Add conversation history if present
+    for msg in conversation_history[-8:]:  # Keep last 4 exchanges
+        messages.append({
+            "role": msg["role"],
+            "content": msg["content"]
+        })
+    
+    # Add current question
+    messages.append({
+        "role": "user",
+        "content": question
+    })
+    
+    try:
+        client = Anthropic(api_key=config.CLAUDE_API_KEY)
+        
+        message = client.messages.create(
+            model=selected_model,
+            max_tokens=1000,
+            system=system_prompt,
+            messages=messages
+        )
+        
+        answer = message.content[0].text
+        
+        return JsonResponse({
+            'success': True,
+            'answer': answer,
+            'symbol': symbol.upper(),
+            'model': selected_model
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'error': f'Error calling Claude API: {str(e)}'
+        }, status=500)
+
+
 def watchlist_view(request):
     """View showing stocks in the user's watchlist"""
     # Get latest date

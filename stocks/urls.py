@@ -13,6 +13,7 @@ urlpatterns = [
     path('api/search/', views.search_stocks, name='search_stocks'),
     path('api/proxy-image/', views.proxy_company_image, name='proxy_company_image'),
     path('api/analyze/<str:symbol>/', views.analyze_stock_ai, name='analyze_stock_ai'),
+    path('api/agent/<str:symbol>/', views.ask_ai_agent, name='ask_ai_agent'),
     path('api/watchlist/add/<str:symbol>/', views.add_to_watchlist, name='add_to_watchlist'),
     path('api/watchlist/remove/<str:symbol>/', views.remove_from_watchlist, name='remove_from_watchlist'),
     path('api/watchlist/check/<str:symbol>/', views.check_watchlist_status, name='check_watchlist_status'),

@@ -100,12 +100,15 @@ class DatabaseManager:
              sell_target_conservative, sell_target_primary, sell_target_aggressive,
              partial_profit_at, risk_reward_ratio, risk_percent,
              holder_signal, holder_signal_reasons,
-             holder_stop_initial, holder_stop_trailing, holder_trailing_method)
+             holder_stop_initial, holder_stop_trailing, holder_trailing_method,
+             cup_detected, cup_depth_pct, cup_duration_weeks,
+             handle_detected, handle_depth_pct, handle_duration_weeks,
+             handle_has_vcp, pattern_type)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -175,7 +178,15 @@ class DatabaseManager:
                 holder_signal_reasons = EXCLUDED.holder_signal_reasons,
                 holder_stop_initial = EXCLUDED.holder_stop_initial,
                 holder_stop_trailing = EXCLUDED.holder_stop_trailing,
-                holder_trailing_method = EXCLUDED.holder_trailing_method
+                holder_trailing_method = EXCLUDED.holder_trailing_method,
+                cup_detected = EXCLUDED.cup_detected,
+                cup_depth_pct = EXCLUDED.cup_depth_pct,
+                cup_duration_weeks = EXCLUDED.cup_duration_weeks,
+                handle_detected = EXCLUDED.handle_detected,
+                handle_depth_pct = EXCLUDED.handle_depth_pct,
+                handle_duration_weeks = EXCLUDED.handle_duration_weeks,
+                handle_has_vcp = EXCLUDED.handle_has_vcp,
+                pattern_type = EXCLUDED.pattern_type
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -246,7 +257,15 @@ class DatabaseManager:
             metrics['holder_signal_reasons'],
             metrics['holder_stop_initial'],
             metrics['holder_stop_trailing'],
-            metrics['holder_trailing_method']
+            metrics['holder_trailing_method'],
+            metrics['cup_detected'],
+            metrics['cup_depth_pct'],
+            metrics['cup_duration_weeks'],
+            metrics['handle_detected'],
+            metrics['handle_depth_pct'],
+            metrics['handle_duration_weeks'],
+            metrics['handle_has_vcp'],
+            metrics['pattern_type']
         ))
 
         self.conn.commit()
@@ -319,12 +338,15 @@ class DatabaseManager:
                      sell_target_conservative, sell_target_primary, sell_target_aggressive,
                      partial_profit_at, risk_reward_ratio, risk_percent,
                      holder_signal, holder_signal_reasons,
-                     holder_stop_initial, holder_stop_trailing, holder_trailing_method)
+                     holder_stop_initial, holder_stop_trailing, holder_trailing_method,
+                     cup_detected, cup_depth_pct, cup_duration_weeks,
+                     handle_detected, handle_depth_pct, handle_duration_weeks,
+                     handle_has_vcp, pattern_type)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s)
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (symbol, date)
                     DO UPDATE SET
                         close_price = EXCLUDED.close_price,
@@ -394,7 +416,15 @@ class DatabaseManager:
                         holder_signal_reasons = EXCLUDED.holder_signal_reasons,
                         holder_stop_initial = EXCLUDED.holder_stop_initial,
                         holder_stop_trailing = EXCLUDED.holder_stop_trailing,
-                        holder_trailing_method = EXCLUDED.holder_trailing_method
+                        holder_trailing_method = EXCLUDED.holder_trailing_method,
+                        cup_detected = EXCLUDED.cup_detected,
+                        cup_depth_pct = EXCLUDED.cup_depth_pct,
+                        cup_duration_weeks = EXCLUDED.cup_duration_weeks,
+                        handle_detected = EXCLUDED.handle_detected,
+                        handle_depth_pct = EXCLUDED.handle_depth_pct,
+                        handle_duration_weeks = EXCLUDED.handle_duration_weeks,
+                        handle_has_vcp = EXCLUDED.handle_has_vcp,
+                        pattern_type = EXCLUDED.pattern_type
                 """, (
                     metrics['symbol'],
                     metrics['date'],
@@ -465,7 +495,15 @@ class DatabaseManager:
                     metrics['holder_signal_reasons'],
                     metrics['holder_stop_initial'],
                     metrics['holder_stop_trailing'],
-                    metrics['holder_trailing_method']
+                    metrics['holder_trailing_method'],
+                    metrics['cup_detected'],
+                    metrics['cup_depth_pct'],
+                    metrics['cup_duration_weeks'],
+                    metrics['handle_detected'],
+                    metrics['handle_depth_pct'],
+                    metrics['handle_duration_weeks'],
+                    metrics['handle_has_vcp'],
+                    metrics['pattern_type']
                 ))
 
             self.conn.commit()

@@ -53,6 +53,16 @@ class MinerviniMetrics(models.Model):
     volume_contraction = models.BooleanField(default=False)
     pivot_price = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     
+    # Cup-and-Handle pattern fields
+    cup_detected = models.BooleanField(default=False)
+    cup_depth_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    cup_duration_weeks = models.IntegerField(null=True)
+    handle_detected = models.BooleanField(default=False)
+    handle_depth_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    handle_duration_weeks = models.IntegerField(null=True)
+    handle_has_vcp = models.BooleanField(default=False)
+    pattern_type = models.CharField(max_length=20, null=True, blank=True)
+    
     # Enhanced metrics
     avg_dollar_volume = models.BigIntegerField(null=True)
     volume_ratio = models.DecimalField(max_digits=5, decimal_places=2, null=True)
@@ -224,6 +234,26 @@ class MinerviniMetrics(models.Model):
             return "Average"
         else:
             return "Lagging"
+    
+    @property
+    def pattern_type_display(self):
+        """Human-readable pattern type label"""
+        labels = {
+            'CUP_HANDLE_VCP': 'Cup & Handle with VCP (Premium)',
+            'CUP_HANDLE': 'Cup & Handle',
+            'VCP_ONLY': 'VCP',
+        }
+        return labels.get(self.pattern_type, 'None')
+    
+    @property
+    def pattern_quality_badge_class(self):
+        """Bootstrap badge class for pattern quality"""
+        classes = {
+            'CUP_HANDLE_VCP': 'bg-success',
+            'CUP_HANDLE': 'bg-info',
+            'VCP_ONLY': 'bg-primary',
+        }
+        return classes.get(self.pattern_type, 'bg-secondary')
     
     @property
     def signal_badge_class(self):

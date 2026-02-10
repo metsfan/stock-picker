@@ -318,6 +318,15 @@ class MinerviniAnalyzer:
             'volume_contraction': vcp_data['volume_contraction'],
             'pivot_price': vcp_data['pivot_price'],
             'last_contraction_low': vcp_data['last_contraction_low'],
+            # Cup-and-handle metrics
+            'cup_detected': vcp_data.get('cup_detected', False),
+            'cup_depth_pct': vcp_data.get('cup_depth_pct'),
+            'cup_duration_weeks': vcp_data.get('cup_duration_weeks'),
+            'handle_detected': vcp_data.get('handle_detected', False),
+            'handle_depth_pct': vcp_data.get('handle_depth_pct'),
+            'handle_duration_weeks': vcp_data.get('handle_duration_weeks'),
+            'handle_has_vcp': vcp_data.get('handle_has_vcp', False),
+            'pattern_type': vcp_data.get('pattern_type'),
             # Short-term EMAs (for entry/stop calculations)
             'ema_10': ema_10,
             'ema_21': ema_21,

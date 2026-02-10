@@ -417,3 +417,20 @@ ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS holder_trailing_method VA
 
 CREATE INDEX IF NOT EXISTS idx_holder_signal ON minervini_metrics(holder_signal);
 CREATE INDEX IF NOT EXISTS idx_holder_signal_date ON minervini_metrics(date, holder_signal);
+
+-- ============================================================================
+-- 2026-02-10: Cup-and-Handle pattern detection integrated with VCP
+-- Identifies cup-and-handle formations; premium setups have VCP in the handle.
+-- ============================================================================
+
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS cup_detected BOOLEAN DEFAULT FALSE;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS cup_depth_pct NUMERIC(5, 2);
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS cup_duration_weeks INTEGER;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS handle_detected BOOLEAN DEFAULT FALSE;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS handle_depth_pct NUMERIC(5, 2);
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS handle_duration_weeks INTEGER;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS handle_has_vcp BOOLEAN DEFAULT FALSE;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS pattern_type VARCHAR(20);  -- VCP_ONLY, CUP_HANDLE, CUP_HANDLE_VCP
+
+CREATE INDEX IF NOT EXISTS idx_cup_detected ON minervini_metrics(cup_detected);
+CREATE INDEX IF NOT EXISTS idx_pattern_type ON minervini_metrics(pattern_type);

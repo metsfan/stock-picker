@@ -3,6 +3,7 @@ Chart pattern detection for Minervini analysis.
 
 Implements:
 - Volatility Contraction Pattern (VCP) detection
+- Cup-and-Handle detection (with VCP integration)
 - Primary Base detection for IPOs/new issues
 """
 
@@ -21,7 +22,7 @@ class PatternDetector:
 
     def detect_vcp(self, symbol, end_date, lookback_days=120):
         """
-        Detect Volatility Contraction Pattern (VCP).
+        Detect Volatility Contraction Pattern (VCP) and cup-and-handle.
 
         VCP characteristics:
         - Series of price contractions (usually 2-4)
@@ -30,24 +31,25 @@ class PatternDetector:
         - Forms higher lows
         - Price consolidates near highs
 
+        Also runs cup-and-handle detection and integrates scoring:
+        - Cup+Handle+VCP in handle = premium setup (+20 score)
+        - Cup+Handle without VCP = standard cup-handle (+10 score)
+        - VCP only = standalone VCP (normal scoring)
+
         Args:
             symbol: Stock symbol
             end_date: Date to analyze
             lookback_days: How far back to look for the pattern (default 120 days)
 
         Returns:
-            dict with VCP metrics:
-            - vcp_detected: True if valid VCP found
-            - vcp_score: Quality score 0-100
-            - contraction_count: Number of contractions found
-            - latest_contraction_pct: Tightness of most recent contraction
-            - volume_contraction: True if volume is contracting
-            - pivot_price: Potential breakout price
+            dict with VCP + cup-and-handle metrics
         """
         cursor = self.conn.cursor()
 
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-        start_date = (end_date_obj - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+        # Fetch extra history for cup-and-handle (needs wider window)
+        cup_lookback = max(lookback_days, 180)
+        start_date = (end_date_obj - timedelta(days=cup_lookback)).strftime("%Y-%m-%d")
 
         # Get price and volume data
         cursor.execute("""
@@ -66,7 +68,16 @@ class PatternDetector:
             'latest_contraction_pct': None,
             'volume_contraction': False,
             'pivot_price': None,
-            'last_contraction_low': None
+            'last_contraction_low': None,
+            # Cup-and-handle fields
+            'cup_detected': False,
+            'cup_depth_pct': None,
+            'cup_duration_weeks': None,
+            'handle_detected': False,
+            'handle_depth_pct': None,
+            'handle_duration_weeks': None,
+            'handle_has_vcp': False,
+            'pattern_type': None,
         }
 
         if len(rows) < 30:  # Need minimum data
@@ -79,18 +90,52 @@ class PatternDetector:
         closes = [float(row[3]) for row in rows]
         volumes = [int(row[4]) for row in rows]
 
+        # --- Cup-and-handle detection (uses full data window) ----------
+        cup_handle = self.detect_cup_and_handle(highs, lows, closes, volumes, dates)
+
+        # --- Standard VCP detection (uses lookback_days window) --------
+        # Trim to the original lookback_days for VCP analysis
+        if cup_lookback > lookback_days:
+            trading_days_per_calendar = len(rows) / cup_lookback if cup_lookback > 0 else 0.7
+            target_bars = int(lookback_days * trading_days_per_calendar)
+            if target_bars < len(rows):
+                offset = len(rows) - target_bars
+                vcp_highs = highs[offset:]
+                vcp_lows = lows[offset:]
+                vcp_closes = closes[offset:]
+                vcp_volumes = volumes[offset:]
+            else:
+                vcp_highs = highs
+                vcp_lows = lows
+                vcp_closes = closes
+                vcp_volumes = volumes
+        else:
+            vcp_highs = highs
+            vcp_lows = lows
+            vcp_closes = closes
+            vcp_volumes = volumes
+
         # Find the highest high in the lookback period (potential starting point)
-        max_high = max(highs)
-        max_high_idx = highs.index(max_high)
+        max_high = max(vcp_highs)
+        max_high_idx = vcp_highs.index(max_high)
 
         # Only analyze if max high is in first 60% of period (needs time to contract)
-        if max_high_idx > len(highs) * 0.6:
-            return empty_result
+        if max_high_idx > len(vcp_highs) * 0.6:
+            # Even if VCP fails, return cup-handle data if found
+            result = dict(empty_result)
+            result.update(cup_handle)
+            if cup_handle.get('pattern_type') is None and not cup_handle.get('cup_detected'):
+                result['pattern_type'] = None
+            return result
 
         # Analyze contractions by dividing period after max high into segments
-        remaining_data = len(highs) - max_high_idx
+        remaining_data = len(vcp_highs) - max_high_idx
         if remaining_data < 20:
-            return empty_result
+            result = dict(empty_result)
+            result.update(cup_handle)
+            if cup_handle.get('pattern_type') is None and not cup_handle.get('cup_detected'):
+                result['pattern_type'] = None
+            return result
 
         # Divide into segments to find contractions
         segment_size = remaining_data // 4  # Look for up to 4 contractions
@@ -102,13 +147,13 @@ class PatternDetector:
 
         for i in range(4):
             start_idx = max_high_idx + (i * segment_size)
-            end_idx = min(start_idx + segment_size, len(highs))
+            end_idx = min(start_idx + segment_size, len(vcp_highs))
 
-            if start_idx >= len(highs):
+            if start_idx >= len(vcp_highs):
                 break
 
-            segment_highs = highs[start_idx:end_idx]
-            segment_lows = lows[start_idx:end_idx]
+            segment_highs = vcp_highs[start_idx:end_idx]
+            segment_lows = vcp_lows[start_idx:end_idx]
 
             if segment_highs and segment_lows:
                 seg_high = max(segment_highs)
@@ -118,7 +163,11 @@ class PatternDetector:
                 contraction_lows.append(seg_low)
 
         if len(contractions) < 2:
-            return empty_result
+            result = dict(empty_result)
+            result.update(cup_handle)
+            if cup_handle.get('pattern_type') is None and not cup_handle.get('cup_detected'):
+                result['pattern_type'] = None
+            return result
 
         # Check for volatility contraction (each range smaller than previous)
         # A true VCP requires continuously tightening contractions;
@@ -138,8 +187,8 @@ class PatternDetector:
                 break
 
         # Analyze volume contraction
-        early_volume = volumes[max_high_idx:max_high_idx + segment_size]
-        late_volume = volumes[-segment_size:]
+        early_volume = vcp_volumes[max_high_idx:max_high_idx + segment_size]
+        late_volume = vcp_volumes[-segment_size:]
 
         avg_early_volume = sum(early_volume) / len(early_volume) if early_volume else 0
         avg_late_volume = sum(late_volume) / len(late_volume) if late_volume else 0
@@ -150,7 +199,7 @@ class PatternDetector:
         latest_contraction_pct = contractions[-1] if contractions else None
 
         # Determine pivot price (recent high that acts as resistance)
-        recent_highs = highs[-20:] if len(highs) >= 20 else highs
+        recent_highs = vcp_highs[-20:] if len(vcp_highs) >= 20 else vcp_highs
         pivot_price = max(recent_highs)
 
         # Calculate VCP score (0-100)
@@ -181,7 +230,7 @@ class PatternDetector:
             vcp_score += 20
 
         # Score for price near pivot (10 points)
-        current_price = closes[-1]
+        current_price = vcp_closes[-1]
         distance_from_pivot = ((pivot_price - current_price) / pivot_price) * 100
         if distance_from_pivot <= 3:
             vcp_score += 10
@@ -190,11 +239,32 @@ class PatternDetector:
         elif distance_from_pivot <= 10:
             vcp_score += 4
 
+        # --- Integrate cup-and-handle scoring --------------------------
+        pattern_type = cup_handle.get('pattern_type')
+
+        if cup_handle['cup_detected'] and cup_handle['handle_detected']:
+            if cup_handle['handle_has_vcp']:
+                vcp_score += 20  # Premium: Cup + Handle + VCP
+                pattern_type = 'CUP_HANDLE_VCP'
+            else:
+                vcp_score += 10  # Standard cup-and-handle
+                pattern_type = 'CUP_HANDLE'
+        elif cup_handle['cup_detected']:
+            vcp_score += 5  # Cup structure found but no proper handle
+            # Keep pattern_type as None or VCP_ONLY below
+
         # Determine if VCP is detected (score >= 50 and at least 2 contractions)
         vcp_detected = vcp_score >= 50 and contraction_count >= 2
 
+        # If VCP is detected but no cup-handle pattern, label as VCP_ONLY
+        if vcp_detected and pattern_type is None:
+            pattern_type = 'VCP_ONLY'
+
         # Track the low of the last (tightest) contraction for stop loss placement
         last_contraction_low = contraction_lows[-1] if contraction_lows else None
+
+        # Cap VCP score at 100
+        vcp_score = min(vcp_score, 100)
 
         return {
             'vcp_detected': vcp_detected,
@@ -203,7 +273,231 @@ class PatternDetector:
             'latest_contraction_pct': latest_contraction_pct,
             'volume_contraction': volume_contraction,
             'pivot_price': pivot_price,
-            'last_contraction_low': last_contraction_low
+            'last_contraction_low': last_contraction_low,
+            # Cup-and-handle fields
+            'cup_detected': cup_handle['cup_detected'],
+            'cup_depth_pct': cup_handle['cup_depth_pct'],
+            'cup_duration_weeks': cup_handle['cup_duration_weeks'],
+            'handle_detected': cup_handle['handle_detected'],
+            'handle_depth_pct': cup_handle['handle_depth_pct'],
+            'handle_duration_weeks': cup_handle['handle_duration_weeks'],
+            'handle_has_vcp': cup_handle['handle_has_vcp'],
+            'pattern_type': pattern_type,
+        }
+
+    def detect_cup_and_handle(self, highs, lows, closes, volumes, dates):
+        """
+        Detect cup-and-handle pattern within the provided price data.
+
+        Cup-and-handle (O'Neil / Minervini):
+        - Cup: U-shaped correction, 4-65 weeks, 12-33% depth, rounded bottom
+        - Handle: short consolidation in upper half of cup, 1-4 weeks, max 20% depth
+        - Premium setups have VCP characteristics in the handle
+
+        This method operates on pre-fetched price arrays so that detect_vcp()
+        can call it without issuing a second database query.
+
+        Args:
+            highs: list[float]   daily high prices, chronological
+            lows: list[float]    daily low prices
+            closes: list[float]  daily close prices
+            volumes: list[int]   daily volumes
+            dates: list           date objects
+
+        Returns:
+            dict:
+            - cup_detected: bool
+            - cup_depth_pct: float or None
+            - cup_duration_weeks: int or None
+            - handle_detected: bool
+            - handle_depth_pct: float or None
+            - handle_duration_weeks: int or None
+            - handle_has_vcp: bool
+            - pattern_type: 'CUP_HANDLE_VCP' / 'CUP_HANDLE' / 'VCP_ONLY' / None
+        """
+        empty = {
+            'cup_detected': False,
+            'cup_depth_pct': None,
+            'cup_duration_weeks': None,
+            'handle_detected': False,
+            'handle_depth_pct': None,
+            'handle_duration_weeks': None,
+            'handle_has_vcp': False,
+            'pattern_type': None,
+        }
+
+        n = len(closes)
+        if n < 30:  # ~6 weeks minimum for any cup structure
+            return empty
+
+        # --- Step 1: Identify the cup ----------------------------------
+        # The "left lip" is the highest high in roughly the first 60% of data.
+        search_end = int(n * 0.6)
+        if search_end < 10:
+            return empty
+
+        left_lip_high = max(highs[:search_end])
+        left_lip_idx = highs.index(left_lip_high)
+
+        # Look for the cup bottom: lowest low between the left lip and the
+        # point where price recovers close to that high.
+        if left_lip_idx >= n - 10:
+            return empty
+
+        # Find the minimum low after the left lip
+        post_lip_lows = lows[left_lip_idx:]
+        cup_bottom = min(post_lip_lows)
+        cup_bottom_idx = left_lip_idx + post_lip_lows.index(cup_bottom)
+
+        # Measure cup depth
+        cup_depth_pct = ((left_lip_high - cup_bottom) / left_lip_high) * 100
+
+        # Cup depth must be 12-50% (O'Neil/Minervini range)
+        if cup_depth_pct < 12 or cup_depth_pct > 50:
+            return empty
+
+        # The cup bottom must NOT be at the very end of the data
+        if cup_bottom_idx >= n - 5:
+            return empty
+
+        # --- Step 2: Check for U-shape (not V-shape) -------------------
+        # A rounded bottom has multiple days near the low, whereas a V-shape
+        # recovers immediately.  Measure how many bars after the bottom are
+        # within 3% of the cup bottom.
+        near_bottom_count = 0
+        check_range = min(cup_bottom_idx + 20, n)
+        for i in range(cup_bottom_idx, check_range):
+            if lows[i] <= cup_bottom * 1.03:
+                near_bottom_count += 1
+
+        # Require at least 3 bars near bottom for U-shape
+        if near_bottom_count < 3:
+            return empty
+
+        # --- Step 3: Find the right lip (cup recovery) -----------------
+        # Price must recover to within 15% of the left-lip high after the
+        # cup bottom to form the right side of the cup.
+        right_lip_idx = None
+        recovery_threshold = left_lip_high * 0.85
+
+        for i in range(cup_bottom_idx + 1, n):
+            if highs[i] >= recovery_threshold:
+                right_lip_idx = i
+                break
+
+        if right_lip_idx is None:
+            return empty
+
+        # Cup duration in trading weeks
+        cup_trading_days = right_lip_idx - left_lip_idx
+        cup_duration_weeks = round(cup_trading_days / 5)
+
+        # Duration check: 4-65 weeks
+        if cup_duration_weeks < 4 or cup_duration_weeks > 65:
+            return empty
+
+        # Volume at bottom should be lower than at the left lip (accumulation)
+        lip_vol_window = max(1, min(5, right_lip_idx - left_lip_idx))
+        bottom_vol_window = max(1, min(5, n - cup_bottom_idx))
+
+        lip_avg_vol = (sum(volumes[left_lip_idx:left_lip_idx + lip_vol_window])
+                       / lip_vol_window)
+        bottom_avg_vol = (sum(volumes[cup_bottom_idx:cup_bottom_idx + bottom_vol_window])
+                          / bottom_vol_window)
+
+        # Optional but informative -- doesn't reject if volume doesn't decline
+        cup_volume_declining = bottom_avg_vol < lip_avg_vol * 0.85 if lip_avg_vol > 0 else False
+
+        # --- Step 4: Detect the handle ---------------------------------
+        # The handle forms after the right lip; it is a short, shallow pullback.
+        handle_detected = False
+        handle_depth_pct = None
+        handle_duration_weeks = None
+        handle_has_vcp = False
+
+        handle_data_start = right_lip_idx
+        handle_data = n - handle_data_start
+
+        if handle_data >= 5:  # Need at least ~1 week for a handle
+            handle_highs = highs[handle_data_start:]
+            handle_lows = lows[handle_data_start:]
+            handle_closes = closes[handle_data_start:]
+            handle_volumes = volumes[handle_data_start:]
+
+            handle_high = max(handle_highs)
+            handle_low = min(handle_lows)
+            handle_depth_pct_raw = ((handle_high - handle_low) / handle_high) * 100
+            handle_weeks = round(handle_data / 5)
+
+            # Handle must be in upper half of cup range
+            cup_range = left_lip_high - cup_bottom
+            cup_midpoint = cup_bottom + cup_range * 0.5
+
+            # Validity: shallow (max 20%), short (max 8 weeks), in upper half
+            if (handle_depth_pct_raw <= 20 and
+                    handle_weeks <= 8 and
+                    handle_low >= cup_midpoint):
+                handle_detected = True
+                handle_depth_pct = round(handle_depth_pct_raw, 2)
+                handle_duration_weeks = max(handle_weeks, 1)
+
+                # --- Step 5: Check for VCP in the handle ---------------
+                # Divide handle into mini-segments and look for tightening
+                if len(handle_highs) >= 10:
+                    seg = max(len(handle_highs) // 3, 3)
+                    handle_contractions = []
+
+                    for j in range(3):
+                        s = j * seg
+                        e = min(s + seg, len(handle_highs))
+                        if s >= len(handle_highs):
+                            break
+                        sh = max(handle_highs[s:e])
+                        sl = min(handle_lows[s:e])
+                        if sh > 0:
+                            handle_contractions.append(((sh - sl) / sh) * 100)
+
+                    # VCP in handle: at least 2 segments with tightening
+                    if len(handle_contractions) >= 2:
+                        tightening = all(
+                            handle_contractions[i] <= handle_contractions[i - 1] * 1.1
+                            for i in range(1, len(handle_contractions))
+                        )
+                        if tightening:
+                            handle_has_vcp = True
+
+                    # Also check for volume dry-up in handle
+                    if len(handle_volumes) >= 6:
+                        first_half_vol = sum(handle_volumes[:len(handle_volumes) // 2])
+                        second_half_vol = sum(handle_volumes[len(handle_volumes) // 2:])
+                        half_len = len(handle_volumes) // 2
+                        if half_len > 0:
+                            avg_first = first_half_vol / half_len
+                            avg_second = second_half_vol / (len(handle_volumes) - half_len)
+                            if avg_first > 0 and avg_second < avg_first * 0.75:
+                                # Volume drying up supports VCP in handle
+                                pass  # handle_has_vcp already set by contraction check
+
+        # --- Determine pattern type ------------------------------------
+        cup_detected = True
+        if handle_detected and handle_has_vcp:
+            pattern_type = 'CUP_HANDLE_VCP'
+        elif handle_detected:
+            pattern_type = 'CUP_HANDLE'
+        else:
+            # Cup without a proper handle -- not a complete cup-and-handle
+            pattern_type = None
+            cup_detected = True  # Cup itself was found
+
+        return {
+            'cup_detected': cup_detected,
+            'cup_depth_pct': round(cup_depth_pct, 2),
+            'cup_duration_weeks': cup_duration_weeks,
+            'handle_detected': handle_detected,
+            'handle_depth_pct': handle_depth_pct,
+            'handle_duration_weeks': handle_duration_weeks,
+            'handle_has_vcp': handle_has_vcp,
+            'pattern_type': pattern_type,
         }
 
     def detect_primary_base(self, symbol, end_date, list_date):

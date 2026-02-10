@@ -713,18 +713,85 @@
                 </div>
                 {% endif %}
 
-                <!-- VCP Card -->
+                <!-- Pattern & VCP Card -->
                 <div class="card mb-3">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">📊 VCP Analysis</h5>
+                    <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">📊 Pattern Analysis</h5>
+                        {% if metrics.pattern_type %}
+                        <span class="badge {{ metrics.pattern_quality_badge_class }}">
+                            {{ metrics.pattern_type_display }}
+                        </span>
+                        {% endif %}
                     </div>
                     <div class="card-body">
+                        {% if metrics.cup_detected %}
+                        <!-- Cup-and-Handle Section -->
+                        <h6 class="text-muted mb-2">Cup-and-Handle</h6>
+                        <table class="table table-sm mb-3">
+                            <tr>
+                                <td><strong>Cup Found:</strong></td>
+                                <td class="text-end"><span class="badge bg-success">Yes</span></td>
+                            </tr>
+                            {% if metrics.cup_duration_weeks is not None %}
+                            <tr>
+                                <td><strong>Cup Duration:</strong></td>
+                                <td class="text-end">{{ metrics.cup_duration_weeks }} weeks</td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.cup_depth_pct is not None %}
+                            <tr>
+                                <td><strong>Cup Depth:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.cup_depth_pct <= 25 %}
+                                        <span class="text-success">{{ metrics.cup_depth_pct|floatformat:1 }}%</span>
+                                    {% elif metrics.cup_depth_pct <= 35 %}
+                                        <span class="text-warning">{{ metrics.cup_depth_pct|floatformat:1 }}%</span>
+                                    {% else %}
+                                        <span class="text-danger">{{ metrics.cup_depth_pct|floatformat:1 }}%</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.handle_detected %}
+                            <tr>
+                                <td><strong>Handle Found:</strong></td>
+                                <td class="text-end"><span class="badge bg-success">Yes</span></td>
+                            </tr>
+                            {% if metrics.handle_duration_weeks is not None %}
+                            <tr>
+                                <td><strong>Handle Duration:</strong></td>
+                                <td class="text-end">{{ metrics.handle_duration_weeks }} weeks</td>
+                            </tr>
+                            {% endif %}
+                            {% if metrics.handle_depth_pct is not None %}
+                            <tr>
+                                <td><strong>Handle Depth:</strong></td>
+                                <td class="text-end">{{ metrics.handle_depth_pct|floatformat:1 }}%</td>
+                            </tr>
+                            {% endif %}
+                            <tr>
+                                <td><strong>VCP in Handle:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.handle_has_vcp %}
+                                        <span class="text-success fw-bold">Yes -- Premium Setup</span>
+                                    {% else %}
+                                        <span class="text-muted">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </table>
+                        <hr>
+                        {% endif %}
+                        
+                        <!-- VCP Section -->
+                        <h6 class="text-muted mb-2">VCP Metrics</h6>
                         <table class="table table-sm">
                             <tr>
                                 <td><strong>VCP Detected:</strong></td>
                                 <td class="text-end">
                                     {% if metrics.vcp_detected %}
-                                        <span class="badge bg-success">✓ YES</span>
+                                        <span class="badge bg-success">Yes</span>
                                     {% else %}
                                         <span class="badge bg-secondary">Not Detected</span>
                                     {% endif %}
@@ -757,7 +824,7 @@
                                 <td><strong>Volume Dry Up:</strong></td>
                                 <td class="text-end">
                                     {% if metrics.volume_contraction %}
-                                        <span class="text-success">✓ Yes</span>
+                                        <span class="text-success">Yes</span>
                                     {% else %}
                                         <span class="text-muted">No</span>
                                     {% endif %}
@@ -1021,6 +1088,43 @@
                             <small>Analysis includes: Minervini metrics, VCP patterns, recent news, earnings reports, market sentiment, and actionable recommendations.</small>
                         </div>
                         <div id="aiAnalysisError" class="alert alert-danger d-none"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Agent Widget -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-gradient text-white d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        <h5 class="mb-0">💬 AI Agent - Ask a Question</h5>
+                        <select id="agentModelSelect" class="form-select form-select-sm" style="width: auto;">
+                            <option value="claude-sonnet-4-5" selected>Sonnet 4.5</option>
+                            <option value="claude-opus-4-6">Opus 4.6</option>
+                            <option value="claude-haiku-4-5">Haiku 4.5</option>
+                        </select>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted mb-3">Ask specific questions about {{ symbol }}. The AI has full context of the stock's metrics, signals, and current market data.</p>
+                        
+                        <!-- Question Input Form -->
+                        <div class="mb-3">
+                            <div class="input-group">
+                                <input type="text" id="agentQuestion" class="form-control" placeholder="e.g., What are the key risks for this stock? Should I wait for a pullback?" />
+                                <button id="askAgentBtn" class="btn btn-primary">
+                                    <span id="askText">Ask</span>
+                                    <span id="askSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+                                </button>
+                            </div>
+                            <small class="text-muted">Example questions: "Is this a good entry point?", "What's the downside risk?", "Compare this to industry peers"</small>
+                        </div>
+                        
+                        <!-- Conversation History -->
+                        <div id="agentConversation" class="mb-3"></div>
+                        
+                        <!-- Error Display -->
+                        <div id="agentError" class="alert alert-danger d-none"></div>
                     </div>
                 </div>
             </div>
@@ -2263,6 +2367,127 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Check status on page load
     checkWatchlistStatus();
+    
+    // ========== AI Agent functionality ==========
+    const askAgentBtn = document.getElementById('askAgentBtn');
+    const agentQuestion = document.getElementById('agentQuestion');
+    const askText = document.getElementById('askText');
+    const askSpinner = document.getElementById('askSpinner');
+    const agentConversation = document.getElementById('agentConversation');
+    const agentError = document.getElementById('agentError');
+    
+    // Store conversation history
+    let conversationHistory = [];
+    
+    async function askAgent() {
+        const question = agentQuestion.value.trim();
+        
+        if (!question) {
+            agentError.textContent = 'Please enter a question';
+            agentError.classList.remove('d-none');
+            setTimeout(() => agentError.classList.add('d-none'), 3000);
+            return;
+        }
+        
+        // Disable input and show spinner
+        askAgentBtn.disabled = true;
+        agentQuestion.disabled = true;
+        askText.textContent = 'Thinking...';
+        askSpinner.classList.remove('d-none');
+        agentError.classList.add('d-none');
+        
+        // Add user question to conversation
+        addMessageToConversation('user', question);
+        agentQuestion.value = '';
+        
+        try {
+            const csrfToken = getCookie('csrftoken');
+            const selectedModel = document.getElementById('agentModelSelect').value;
+            
+            const response = await fetch(`/api/agent/${symbol}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    question: question,
+                    model: selectedModel,
+                    conversation_history: conversationHistory
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Add AI response to conversation
+                addMessageToConversation('assistant', data.answer);
+                
+                // Update conversation history
+                conversationHistory.push({
+                    role: 'user',
+                    content: question
+                });
+                conversationHistory.push({
+                    role: 'assistant',
+                    content: data.answer
+                });
+                
+                // Keep only last 10 messages (5 exchanges)
+                if (conversationHistory.length > 10) {
+                    conversationHistory = conversationHistory.slice(-10);
+                }
+            } else {
+                agentError.textContent = data.error || 'Failed to get response';
+                agentError.classList.remove('d-none');
+            }
+        } catch (error) {
+            agentError.textContent = 'Error: ' + error.message;
+            agentError.classList.remove('d-none');
+        } finally {
+            // Re-enable input
+            askAgentBtn.disabled = false;
+            agentQuestion.disabled = false;
+            askText.textContent = 'Ask';
+            askSpinner.classList.add('d-none');
+            agentQuestion.focus();
+        }
+    }
+    
+    function addMessageToConversation(role, content) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `mb-3 p-3 rounded ${role === 'user' ? 'bg-light' : 'bg-info bg-opacity-10'}`;
+        
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'fw-bold mb-2';
+        headerDiv.innerHTML = role === 'user' 
+            ? '<i class="bi bi-person-circle"></i> You:' 
+            : '<i class="bi bi-robot"></i> AI Agent:';
+        
+        const contentDiv = document.createElement('div');
+        if (role === 'assistant') {
+            // Render markdown for AI responses
+            contentDiv.className = 'markdown-body';
+            contentDiv.innerHTML = marked.parse(content);
+        } else {
+            contentDiv.textContent = content;
+        }
+        
+        messageDiv.appendChild(headerDiv);
+        messageDiv.appendChild(contentDiv);
+        agentConversation.appendChild(messageDiv);
+        
+        // Scroll to bottom
+        messageDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    
+    // Event listeners
+    askAgentBtn.addEventListener('click', askAgent);
+    agentQuestion.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            askAgent();
+        }
+    });
 });
 </script>
 {% endblock %}
