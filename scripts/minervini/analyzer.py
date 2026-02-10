@@ -70,10 +70,22 @@ class MinerviniAnalyzer:
         """Check if data exists in the database for a given date."""
         return self.db.check_data_exists(date)
 
-    def evaluate_minervini_criteria(self, symbol, date):
+    # Human-readable labels for skip reasons (used for per-symbol and summary output)
+    SKIP_LABELS = {
+        'no_price': 'No price data for this date',
+        'insufficient_history': 'Insufficient history (need ~200 days for MAs/52w)',
+        'inactive': 'Inactive (delisted/suspended)',
+        'micro_cap': 'Micro-cap (< $100M)',
+    }
+
+    def evaluate_minervini_criteria(self, symbol, date, skip_reasons=None):
         """
         Evaluate a stock against Minervini's trend template.
-        Returns metrics and pass/fail status, enhanced with ticker fundamentals.
+        Returns (metrics_dict, skip_reason). metrics_dict is None when skipped;
+        skip_reason is a key (e.g. 'no_price') or None when metrics are returned.
+
+        If skip_reasons is a dict, it will be updated with counts for why stocks
+        were skipped (no_price, insufficient_history, inactive, micro_cap).
         """
         cursor = self.conn.cursor()
 
@@ -84,12 +96,16 @@ class MinerviniAnalyzer:
         if ticker_details:
             # Filter 1: Inactive stocks
             if ticker_details['active'] is False:
-                return None  # Skip inactive stocks
+                if skip_reasons is not None:
+                    skip_reasons['inactive'] = skip_reasons.get('inactive', 0) + 1
+                return (None, 'inactive')
 
             # Filter 2: Extremely small market caps (< $100M)
             # Minervini avoids these due to liquidity concerns
             if ticker_details['market_cap'] and ticker_details['market_cap'] < 100_000_000:
-                return None  # Too small, prone to manipulation
+                if skip_reasons is not None:
+                    skip_reasons['micro_cap'] = skip_reasons.get('micro_cap', 0) + 1
+                return (None, 'micro_cap')
 
         # Get current price
         cursor.execute("""
@@ -101,7 +117,9 @@ class MinerviniAnalyzer:
         cursor.close()
 
         if not result:
-            return None
+            if skip_reasons is not None:
+                skip_reasons['no_price'] = skip_reasons.get('no_price', 0) + 1
+            return (None, 'no_price')
 
         close_price = float(result[0])
 
@@ -141,7 +159,9 @@ class MinerviniAnalyzer:
 
         # Check if we have enough data
         if None in [ma_50, ma_150, ma_200, week_52_high, week_52_low]:
-            return None
+            if skip_reasons is not None:
+                skip_reasons['insufficient_history'] = skip_reasons.get('insufficient_history', 0) + 1
+            return (None, 'insufficient_history')
 
         # Calculate percent from 52-week high and low
         percent_from_52w_high = ((close_price - week_52_high) / week_52_high) * 100
@@ -401,7 +421,7 @@ class MinerviniAnalyzer:
         metrics['holder_stop_trailing'] = holder_data['holder_stop_trailing']
         metrics['holder_trailing_method'] = holder_data['holder_trailing_method']
 
-        return metrics
+        return (metrics, None)
 
     def analyze_date(self, date):
         """Analyze all stocks for a given date."""
@@ -434,11 +454,12 @@ class MinerviniAnalyzer:
         analyzed = 0
         passed = 0
         skipped = 0
+        skip_reasons = {}  # no_price, insufficient_history, inactive, micro_cap
         buffered_metrics = []  # accumulate in memory, write at the end
 
         for i, symbol in enumerate(symbols):
             try:
-                metrics = self.evaluate_minervini_criteria(symbol, date)
+                metrics, skip_reason = self.evaluate_minervini_criteria(symbol, date, skip_reasons=skip_reasons)
 
                 if metrics:
                     buffered_metrics.append(metrics)
@@ -474,13 +495,15 @@ class MinerviniAnalyzer:
                         print(f"  {sig_icon} {symbol}: {sig} - Stage {metrics['stage']} ({metrics['criteria_passed']}/9, RS={metrics['relative_strength']:.0f}){vcp_info}{price_info}{cap_info}")
                 else:
                     skipped += 1
+                    label = self.SKIP_LABELS.get(skip_reason, skip_reason or 'Unknown')
+                    print(f"  SKIP {symbol}: {label}")
 
                 if (i + 1) % 100 == 0:
                     print(f"  Progress: {i + 1}/{len(symbols)} stocks processed...")
 
             except Exception as e:
-                print(f"  Error analyzing {symbol}: {e}")
                 skipped += 1
+                print(f"  SKIP {symbol}: Error - {e}")
                 continue
 
         # Compute summary statistics from in-memory buffer
@@ -509,6 +532,11 @@ class MinerviniAnalyzer:
         print(f"  Analyzed: {analyzed}")
         print(f"  Passed Minervini: {passed} ({(passed/analyzed*100) if analyzed else 0:.1f}%)")
         print(f"  Skipped (insufficient data/filtered): {skipped}")
+        if skip_reasons:
+            print(f"\n  Skip reasons:")
+            for reason, count in sorted(skip_reasons.items(), key=lambda x: -x[1]):
+                label = self.SKIP_LABELS.get(reason, reason)
+                print(f"    {label}: {count}")
 
         if signal_counts:
             print(f"\n  Signal Distribution (Passing Stocks):")
