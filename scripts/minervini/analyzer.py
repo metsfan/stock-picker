@@ -409,10 +409,9 @@ class MinerviniAnalyzer:
 
         # Get all unique symbols for the date
         cursor.execute("""
-            SELECT DISTINCT symbol FROM stock_prices
-            WHERE date = %s
+            SELECT DISTINCT symbol FROM ticker_details
             ORDER BY symbol
-        """, (date,))
+        """)
 
         symbols = [row[0] for row in cursor.fetchall()]
 
