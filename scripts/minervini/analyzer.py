@@ -108,12 +108,12 @@ class MinerviniAnalyzer:
                 return (None, 'micro_cap')
 
         # Get current price
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT close FROM stock_prices
-            WHERE symbol = %s
+            WHERE symbol = '{symbol}'
             ORDER BY date DESC
             LIMIT 1
-        """, (symbol))
+        """)
 
         result = cursor.fetchone()
         cursor.close()
