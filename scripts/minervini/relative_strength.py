@@ -118,9 +118,8 @@ class RelativeStrengthCalculator:
 
         # Get all symbols with sufficient data
         cursor.execute("""
-            SELECT DISTINCT symbol FROM stock_prices
-            WHERE date = %s
-        """, (end_date,))
+            SELECT DISTINCT symbol FROM ticker_details
+        """)
         all_symbols = [row[0] for row in cursor.fetchall()]
 
         performances = {}
