@@ -113,7 +113,7 @@ class MinerviniAnalyzer:
             WHERE symbol = %s
             ORDER BY date DESC
             LIMIT 1
-        """, (symbol, date))
+        """, (symbol))
 
         result = cursor.fetchone()
         cursor.close()
