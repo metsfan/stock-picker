@@ -227,10 +227,11 @@ def hot_sectors_view(request):
     if not latest_date:
         return render(request, 'stocks/hot_sectors.html', {'latest_date': None})
 
-    # Single query: read pre-computed aggregates, exclude N/A sectors, sort by market cap then RS
+    # Single query: read pre-computed aggregates, exclude N/A and weak sectors (RS < 80)
     sectors = SectorPerformance.objects.filter(
         date=latest_date,
         sector_market_cap__isnull=False,
+        sector_rs__gte=80,
     ).exclude(
         sector_market_cap=0,
     ).order_by('-sector_market_cap', '-sector_rs')
