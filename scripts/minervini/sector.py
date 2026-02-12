@@ -126,6 +126,48 @@ class SectorAnalyzer:
         self.conn.commit()
         cursor.close()
 
+    def update_sector_aggregates(self, date):
+        """
+        Update sector_performance with pre-computed stock-level aggregates.
+
+        Must be called AFTER all stocks have been analyzed and saved to
+        minervini_metrics for the given date, because it reads from that table.
+
+        Computes per-sector: total market cap, BUY count, passing count,
+        Stage 2 count, and VCP count.
+        """
+        cursor = self.conn.cursor()
+
+        cursor.execute("""
+            UPDATE sector_performance sp SET
+                sector_market_cap = agg.sector_market_cap,
+                buy_count         = agg.buy_count,
+                passing_count     = agg.passing_count,
+                stage2_count      = agg.stage2_count,
+                vcp_count         = agg.vcp_count
+            FROM (
+                SELECT
+                    td.sic_code,
+                    COALESCE(SUM(td.market_cap), 0)                           AS sector_market_cap,
+                    COUNT(*) FILTER (WHERE mm.signal = 'BUY')                 AS buy_count,
+                    COUNT(*) FILTER (WHERE mm.passes_minervini = TRUE)        AS passing_count,
+                    COUNT(*) FILTER (WHERE mm.stage = 2)                      AS stage2_count,
+                    COUNT(*) FILTER (WHERE mm.vcp_detected = TRUE)            AS vcp_count
+                FROM minervini_metrics mm
+                JOIN ticker_details td ON td.symbol = mm.symbol
+                WHERE mm.date = %s
+                  AND td.sic_code IS NOT NULL AND td.sic_code != ''
+                GROUP BY td.sic_code
+            ) agg
+            WHERE sp.date = %s
+              AND sp.sic_code = agg.sic_code
+        """, (date, date))
+
+        self.conn.commit()
+        updated = cursor.rowcount
+        cursor.close()
+        print(f"  Updated {updated} sector aggregate records")
+
     def get_industry_rs(self, symbol, date):
         """
         Get the industry/sector relative strength for a stock.

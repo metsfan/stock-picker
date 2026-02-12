@@ -610,6 +610,10 @@ def main():
     print("\nSaving metrics to database...")
     analyzer.db.save_metrics_batch(buffered_metrics)
 
+    # Update sector aggregates (market cap, BUY count, etc.) now that metrics are saved
+    print("Updating sector aggregates...")
+    analyzer.sector.update_sector_aggregates(target_date)
+
     if notifications:
         analyzer.db.save_notifications_batch(notifications)
         print(f"✓ Saved {len(notifications)} notification(s)")

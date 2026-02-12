@@ -428,6 +428,13 @@ class SectorPerformance(models.Model):
     sector_rs = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     stock_count = models.IntegerField(null=True)
     
+    # Pre-computed aggregates (populated after stock analysis)
+    sector_market_cap = models.BigIntegerField(null=True, blank=True)
+    buy_count = models.IntegerField(null=True, default=0)
+    passing_count = models.IntegerField(null=True, default=0)
+    stage2_count = models.IntegerField(null=True, default=0)
+    vcp_count = models.IntegerField(null=True, default=0)
+    
     class Meta:
         db_table = 'sector_performance'
         managed = False
@@ -451,6 +458,20 @@ class SectorPerformance(models.Model):
             return "Average"
         else:
             return "Lagging"
+
+    @property
+    def sector_market_cap_formatted(self):
+        """Format total sector market cap"""
+        if not self.sector_market_cap:
+            return "N/A"
+        if self.sector_market_cap >= 1_000_000_000_000:
+            return f"${self.sector_market_cap / 1_000_000_000_000:.1f}T"
+        elif self.sector_market_cap >= 1_000_000_000:
+            return f"${self.sector_market_cap / 1_000_000_000:.1f}B"
+        elif self.sector_market_cap >= 1_000_000:
+            return f"${self.sector_market_cap / 1_000_000:.0f}M"
+        else:
+            return f"${self.sector_market_cap:,.0f}"
 
 
 class Notification(models.Model):

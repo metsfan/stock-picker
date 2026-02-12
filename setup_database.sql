@@ -434,3 +434,27 @@ ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS pattern_type VARCHAR(20);
 
 CREATE INDEX IF NOT EXISTS idx_cup_detected ON minervini_metrics(cup_detected);
 CREATE INDEX IF NOT EXISTS idx_pattern_type ON minervini_metrics(pattern_type);
+
+-- ============================================================================
+-- 2026-02-11: Hot Sectors performance optimization
+-- Pre-computed per-sector aggregates and missing indexes for fast page loads.
+-- ============================================================================
+
+-- Critical missing index: ticker_details.sic_code (used in every sector join)
+CREATE INDEX IF NOT EXISTS idx_ticker_details_sic_code ON ticker_details(sic_code);
+
+-- Composite index for hot sectors / sector detail queries (date filter + symbol IN)
+CREATE INDEX IF NOT EXISTS idx_metrics_date ON minervini_metrics(date);
+
+-- Composite index for sector_performance date+RS sorting
+CREATE INDEX IF NOT EXISTS idx_sector_perf_date_rs ON sector_performance(date, sector_rs DESC);
+
+-- Pre-computed sector aggregates (populated after stock analysis completes)
+ALTER TABLE sector_performance ADD COLUMN IF NOT EXISTS sector_market_cap BIGINT;    -- Total market cap of stocks in sector
+ALTER TABLE sector_performance ADD COLUMN IF NOT EXISTS buy_count INTEGER DEFAULT 0;
+ALTER TABLE sector_performance ADD COLUMN IF NOT EXISTS passing_count INTEGER DEFAULT 0;
+ALTER TABLE sector_performance ADD COLUMN IF NOT EXISTS stage2_count INTEGER DEFAULT 0;
+ALTER TABLE sector_performance ADD COLUMN IF NOT EXISTS vcp_count INTEGER DEFAULT 0;
+
+-- Index for sorting sectors by market cap
+CREATE INDEX IF NOT EXISTS idx_sector_perf_market_cap ON sector_performance(date, sector_market_cap DESC NULLS LAST);
