@@ -1,0 +1,224 @@
+{% extends 'stocks/base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}{{ sector.sic_description|default:"Sector" }} - Hot Sectors - Stock Picker{% endblock %}
+
+{% block content %}
+<div class="container">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'stocks:hot_sectors' %}">🔥 Hot Sectors</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{{ sector.sic_description|default:sic_code }}</li>
+        </ol>
+    </nav>
+
+    {% if latest_date and sector %}
+        <div class="d-flex align-items-center mb-3 flex-wrap gap-2">
+            <h1 class="mb-0 me-3">{{ sector.sic_description|default:"Unknown Sector" }}</h1>
+            {% if sector.sector_rs >= 70 %}
+                <span class="badge bg-success fs-6">RS {{ sector.sector_rs|floatformat:0 }} — Leading</span>
+            {% elif sector.sector_rs >= 50 %}
+                <span class="badge bg-info fs-6">RS {{ sector.sector_rs|floatformat:0 }} — Average</span>
+            {% else %}
+                <span class="badge bg-secondary fs-6">RS {{ sector.sector_rs|floatformat:0 }} — Lagging</span>
+            {% endif %}
+        </div>
+
+        <div class="alert alert-info d-flex justify-content-between align-items-center flex-wrap">
+            <div>
+                <strong>Latest Data:</strong> {{ latest_date|date:"F d, Y" }}
+                &nbsp;|&nbsp;
+                <strong>SIC Code:</strong> {{ sic_code }}
+            </div>
+            <div>
+                <strong>90-Day Return:</strong>
+                <span class="{% if sector.sector_return_90d > 0 %}text-success{% elif sector.sector_return_90d < 0 %}text-danger{% endif %} fw-bold">
+                    {% if sector.sector_return_90d > 0 %}+{% endif %}{{ sector.sector_return_90d|floatformat:1 }}%
+                </span>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-6 col-md-2 mb-3">
+                <div class="card text-center">
+                    <div class="card-body py-2">
+                        <h6 class="card-title text-muted mb-1">Total</h6>
+                        <h3 class="mb-0">{{ stats.total }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2 mb-3">
+                <div class="card text-center border-success">
+                    <div class="card-body py-2">
+                        <h6 class="card-title text-muted mb-1">Passing</h6>
+                        <h3 class="mb-0 text-success">{{ stats.passing }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2 mb-3">
+                <div class="card text-center border-success">
+                    <div class="card-body py-2">
+                        <h6 class="card-title text-muted mb-1">BUY</h6>
+                        <h3 class="mb-0 text-success">{{ stats.buy }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2 mb-3">
+                <div class="card text-center border-warning">
+                    <div class="card-body py-2">
+                        <h6 class="card-title text-muted mb-1">WAIT</h6>
+                        <h3 class="mb-0 text-warning">{{ stats.wait }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2 mb-3">
+                <div class="card text-center border-primary">
+                    <div class="card-body py-2">
+                        <h6 class="card-title text-muted mb-1">Stage 2</h6>
+                        <h3 class="mb-0 text-primary">{{ stats.stage2 }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2 mb-3">
+                <div class="card text-center border-info">
+                    <div class="card-body py-2">
+                        <h6 class="card-title text-muted mb-1">VCP</h6>
+                        <h3 class="mb-0 text-info">{{ stats.vcp }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Stocks in {{ sector.sic_description|default:"this sector" }}</h5>
+                <small>Ranked by Signal &amp; Relative Strength</small>
+            </div>
+            <div class="table-container">
+                <table class="table table-hover table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Price</th>
+                            <th>Signal</th>
+                            <th>RS</th>
+                            <th>Stage</th>
+                            <th>Minervini</th>
+                            <th>VCP</th>
+                            <th>VCP Score</th>
+                            <th>1M Return</th>
+                            <th>3M Return</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stock in stocks %}
+                        <tr>
+                            <td>
+                                <a href="{% url 'stocks:stock_detail' stock.symbol %}">
+                                    <strong>{{ stock.symbol }}</strong>
+                                </a>
+                            </td>
+                            <td>${{ stock.close_price|floatformat:2 }}</td>
+                            <td>
+                                {% if stock.signal == 'BUY' %}
+                                    <span class="badge bg-success">BUY</span>
+                                {% elif stock.signal == 'WAIT' %}
+                                    <span class="badge bg-warning text-dark">WAIT</span>
+                                {% elif stock.signal == 'PASS' %}
+                                    <span class="badge bg-danger">PASS</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">{{ stock.signal|default:"—" }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stock.relative_strength >= 80 %}
+                                    <span class="badge bg-success">{{ stock.relative_strength|floatformat:0 }}</span>
+                                {% elif stock.relative_strength >= 70 %}
+                                    <span class="badge bg-info">{{ stock.relative_strength|floatformat:0 }}</span>
+                                {% elif stock.relative_strength %}
+                                    <span class="badge bg-secondary">{{ stock.relative_strength|floatformat:0 }}</span>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stock.stage == 2 %}
+                                    <span class="badge bg-success">{{ stock.stage }}</span>
+                                {% elif stock.stage == 1 %}
+                                    <span class="badge bg-secondary">{{ stock.stage }}</span>
+                                {% elif stock.stage == 3 %}
+                                    <span class="badge bg-warning text-dark">{{ stock.stage }}</span>
+                                {% elif stock.stage == 4 %}
+                                    <span class="badge bg-danger">{{ stock.stage }}</span>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stock.passes_minervini %}
+                                    <span class="text-success">✓ {{ stock.criteria_passed }}/9</span>
+                                {% else %}
+                                    <span class="text-muted">{{ stock.criteria_passed|default:"0" }}/9</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stock.vcp_detected %}
+                                    <span class="badge bg-info">Yes</span>
+                                {% else %}
+                                    <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stock.vcp_score %}
+                                    {{ stock.vcp_score|floatformat:0 }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stock.return_1m != None %}
+                                    <span class="{% if stock.return_1m > 0 %}text-success{% elif stock.return_1m < 0 %}text-danger{% endif %}">
+                                        {% if stock.return_1m > 0 %}+{% endif %}{{ stock.return_1m|floatformat:1 }}%
+                                    </span>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if stock.return_3m != None %}
+                                    <span class="{% if stock.return_3m > 0 %}text-success{% elif stock.return_3m < 0 %}text-danger{% endif %}">
+                                        {% if stock.return_3m > 0 %}+{% endif %}{{ stock.return_3m|floatformat:1 }}%
+                                    </span>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="10" class="text-center text-muted py-4">No stocks found in this sector.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <a href="{% url 'stocks:hot_sectors' %}" class="btn btn-outline-primary">← Back to Hot Sectors</a>
+        </div>
+
+    {% elif latest_date %}
+        <div class="alert alert-warning">
+            <h4>Sector Not Found</h4>
+            <p>No sector data found for SIC code "{{ sic_code }}" on {{ latest_date|date:"F d, Y" }}.</p>
+            <a href="{% url 'stocks:hot_sectors' %}" class="btn btn-primary">← Back to Hot Sectors</a>
+        </div>
+    {% else %}
+        <div class="alert alert-warning">
+            <h4>No Data Available</h4>
+            <p>Run the analysis scripts to populate the database.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

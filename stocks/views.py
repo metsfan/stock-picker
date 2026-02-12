@@ -218,6 +218,139 @@ def dashboard_view(request):
     return render(request, 'stocks/dashboard.html', context)
 
 
+def hot_sectors_view(request):
+    """Hot Sectors overview - sectors ranked by RS and superperformance density."""
+    latest_date = MinerviniMetrics.objects.values_list('date', flat=True).order_by('-date').first()
+
+    if not latest_date:
+        return render(request, 'stocks/hot_sectors.html', {'latest_date': None})
+
+    # Get all sectors for the latest date
+    sectors = SectorPerformance.objects.filter(date=latest_date).order_by('-sector_rs')
+
+    # Build per-sector stock aggregates
+    sector_data = []
+    for sector in sectors:
+        # Get stocks in this sector on the latest date
+        sector_stocks = MinerviniMetrics.objects.filter(
+            date=latest_date,
+            symbol__in=TickerDetails.objects.filter(
+                sic_code=sector.sic_code
+            ).values_list('symbol', flat=True)
+        )
+
+        total = sector_stocks.count()
+        if total == 0:
+            continue
+
+        buy_count = sector_stocks.filter(signal='BUY').count()
+        buy_wait_count = sector_stocks.filter(signal__in=['BUY', 'WAIT']).count()
+        passing_count = sector_stocks.filter(passes_minervini=True).count()
+        stage2_count = sector_stocks.filter(stage=2).count()
+        vcp_count = sector_stocks.filter(vcp_detected=True).count()
+
+        # Composite hot score: sector RS weight + superperformance density
+        passing_pct = (passing_count / total * 100) if total > 0 else 0
+        buy_pct = (buy_count / total * 100) if total > 0 else 0
+        stage2_pct = (stage2_count / total * 100) if total > 0 else 0
+        sector_rs_val = float(sector.sector_rs) if sector.sector_rs else 0
+        hot_score = (
+            sector_rs_val * 0.4
+            + passing_pct * 0.25
+            + buy_pct * 0.20
+            + stage2_pct * 0.15
+        )
+
+        sector_data.append({
+            'sector': sector,
+            'total': total,
+            'buy_count': buy_count,
+            'buy_wait_count': buy_wait_count,
+            'passing_count': passing_count,
+            'stage2_count': stage2_count,
+            'vcp_count': vcp_count,
+            'passing_pct': round(passing_pct, 1),
+            'hot_score': round(hot_score, 1),
+        })
+
+    # Sort by hot score descending
+    sector_data.sort(key=lambda x: x['hot_score'], reverse=True)
+
+    # Summary stats
+    hot_sectors_count = sum(1 for s in sector_data if float(s['sector'].sector_rs or 0) >= 60)
+    total_superperformance = sum(s['passing_count'] for s in sector_data)
+    total_buy_signals = sum(s['buy_count'] for s in sector_data)
+
+    context = {
+        'latest_date': latest_date,
+        'sector_data': sector_data,
+        'hot_sectors_count': hot_sectors_count,
+        'total_superperformance': total_superperformance,
+        'total_buy_signals': total_buy_signals,
+    }
+
+    return render(request, 'stocks/hot_sectors.html', context)
+
+
+def sector_detail_view(request, sic_code):
+    """Detail view for a single sector - all stocks ranked by RS."""
+    from django.db.models import Case, When, Value, IntegerField
+
+    latest_date = MinerviniMetrics.objects.values_list('date', flat=True).order_by('-date').first()
+
+    if not latest_date:
+        return render(request, 'stocks/sector_detail.html', {
+            'latest_date': None,
+            'sic_code': sic_code,
+        })
+
+    # Get sector performance info
+    try:
+        sector = SectorPerformance.objects.get(date=latest_date, sic_code=sic_code)
+    except SectorPerformance.DoesNotExist:
+        sector = None
+
+    # Get all stocks in this sector on the latest date, ranked by RS
+    sector_symbols = TickerDetails.objects.filter(
+        sic_code=sic_code
+    ).values_list('symbol', flat=True)
+
+    stocks = MinerviniMetrics.objects.filter(
+        date=latest_date,
+        symbol__in=sector_symbols
+    ).annotate(
+        signal_priority=Case(
+            When(signal='BUY', then=Value(1)),
+            When(signal='WAIT', then=Value(2)),
+            When(signal='PASS', then=Value(3)),
+            default=Value(4),
+            output_field=IntegerField(),
+        )
+    ).order_by('signal_priority', '-relative_strength')
+
+    # Summary stats
+    total = stocks.count()
+    stats = {
+        'total': total,
+        'passing': stocks.filter(passes_minervini=True).count(),
+        'buy': stocks.filter(signal='BUY').count(),
+        'wait': stocks.filter(signal='WAIT').count(),
+        'stage2': stocks.filter(stage=2).count(),
+        'vcp': stocks.filter(vcp_detected=True).count(),
+        'new_highs': stocks.filter(is_52w_high=True).count(),
+    }
+
+    context = {
+        'latest_date': latest_date,
+        'sic_code': sic_code,
+        'sector': sector,
+        'stocks': stocks,
+        'stats': stats,
+    }
+
+    return render(request, 'stocks/sector_detail.html', context)
+
+
 def stock_detail_view(request, symbol):
     """Detail view for a specific stock"""
     # Get latest date

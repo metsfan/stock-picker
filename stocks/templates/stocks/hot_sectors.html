@@ -1,0 +1,119 @@
+{% extends 'stocks/base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}Hot Sectors - Stock Picker{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1 class="mb-4">🔥 Hot Sectors</h1>
+
+    {% if latest_date %}
+        <div class="alert alert-info">
+            <strong>Latest Data:</strong> {{ latest_date|date:"F d, Y" }}
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card stat-card">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Hot Sectors (RS &ge; 60)</h5>
+                        <h2 class="card-text text-danger">{{ hot_sectors_count }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card stat-card border-success">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Superperformance Stocks</h5>
+                        <h2 class="card-text text-success">{{ total_superperformance }}</h2>
+                        <small class="text-muted">Passing Minervini across all sectors</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card stat-card border-primary">
+                    <div class="card-body">
+                        <h5 class="card-title text-muted">Total BUY Signals</h5>
+                        <h2 class="card-text text-primary">{{ total_buy_signals }}</h2>
+                        <small class="text-muted">Actionable setups in hot sectors</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            {% for item in sector_data %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <a href="{% url 'stocks:sector_detail' item.sector.sic_code %}" class="text-decoration-none">
+                    <div class="card h-100 sector-card">
+                        <div class="card-header d-flex justify-content-between align-items-center
+                            {% if item.sector.sector_rs >= 70 %}bg-success text-white
+                            {% elif item.sector.sector_rs >= 50 %}bg-info text-white
+                            {% else %}bg-secondary text-white{% endif %}">
+                            <h6 class="mb-0 text-truncate me-2">{{ item.sector.sic_description|default:"Unknown Sector" }}</h6>
+                            <span class="badge bg-light text-dark">RS {{ item.sector.sector_rs|floatformat:0 }}</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between mb-2">
+                                <small class="text-muted">90d Return</small>
+                                <span class="{% if item.sector.sector_return_90d > 0 %}text-success{% elif item.sector.sector_return_90d < 0 %}text-danger{% endif %}">
+                                    {% if item.sector.sector_return_90d > 0 %}+{% endif %}{{ item.sector.sector_return_90d|floatformat:1 }}%
+                                </span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-3">
+                                <small class="text-muted">Stocks</small>
+                                <span>{{ item.total }}</span>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% if item.buy_count %}
+                                    <span class="badge bg-success">{{ item.buy_count }} BUY</span>
+                                {% endif %}
+                                {% if item.buy_wait_count %}
+                                    <span class="badge bg-warning text-dark">{{ item.buy_wait_count }} BUY/WAIT</span>
+                                {% endif %}
+                                {% if item.stage2_count %}
+                                    <span class="badge bg-primary">{{ item.stage2_count }} Stage 2</span>
+                                {% endif %}
+                                {% if item.vcp_count %}
+                                    <span class="badge bg-info">{{ item.vcp_count }} VCP</span>
+                                {% endif %}
+                                {% if item.passing_count %}
+                                    <span class="badge bg-dark">{{ item.passing_count }} Passing</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="card-footer bg-transparent d-flex justify-content-between">
+                            <small class="text-muted">{{ item.passing_pct }}% passing</small>
+                            <small class="text-muted">Hot Score: {{ item.hot_score }}</small>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            {% empty %}
+            <div class="col-12">
+                <div class="alert alert-warning">No sector data available for this date.</div>
+            </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <div class="alert alert-warning">
+            <h4>No Data Available</h4>
+            <p>Run the analysis scripts to populate the database.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .sector-card {
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        cursor: pointer;
+    }
+    .sector-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+    }
+</style>
+{% endblock %}
