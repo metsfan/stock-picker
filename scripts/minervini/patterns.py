@@ -20,16 +20,177 @@ class PatternDetector:
         """
         self.conn = conn
 
+    # ------------------------------------------------------------------
+    # Private helpers for swing-point-based VCP detection
+    # ------------------------------------------------------------------
+
+    def _find_swing_points(self, highs, lows, n_bars):
+        """
+        Find swing highs and swing lows using an N-bar method.
+
+        A swing high is a bar whose high is the highest of the surrounding
+        N bars on each side.  A swing low is a bar whose low is the lowest
+        of the surrounding N bars on each side.
+
+        Args:
+            highs: list[float] daily high prices
+            lows:  list[float] daily low prices
+            n_bars: number of bars on each side to compare
+
+        Returns:
+            list of tuples (index, price, 'high'|'low') sorted by index
+        """
+        points = []
+        for i in range(n_bars, len(highs) - n_bars):
+            # Check swing high
+            is_swing_high = True
+            for j in range(1, n_bars + 1):
+                if highs[i] < highs[i - j] or highs[i] < highs[i + j]:
+                    is_swing_high = False
+                    break
+            if is_swing_high:
+                points.append((i, highs[i], 'high'))
+
+            # Check swing low
+            is_swing_low = True
+            for j in range(1, n_bars + 1):
+                if lows[i] > lows[i - j] or lows[i] > lows[i + j]:
+                    is_swing_low = False
+                    break
+            if is_swing_low:
+                points.append((i, lows[i], 'low'))
+
+        points.sort(key=lambda x: x[0])
+        return points
+
+    def _pair_contractions(self, swing_points, volumes, start_idx):
+        """
+        Walk through swing points after *start_idx* and pair each
+        (swing_high, next_swing_low) as a contraction.
+
+        Args:
+            swing_points: list of (index, price, type) from _find_swing_points
+            volumes: list[int] daily volumes (full VCP window)
+            start_idx: index of the peak -- only consider swings after this
+
+        Returns:
+            list of dicts, each with keys: range_pct, high, low,
+            high_idx, low_idx, avg_volume, duration_bars
+        """
+        post_peak = [p for p in swing_points if p[0] > start_idx]
+
+        contractions = []
+        i = 0
+        while i < len(post_peak) - 1:
+            if post_peak[i][2] == 'high':
+                sh_idx, sh_price, _ = post_peak[i]
+                # Find the next swing low after this high
+                for j in range(i + 1, len(post_peak)):
+                    if post_peak[j][2] == 'low':
+                        sl_idx, sl_price, _ = post_peak[j]
+                        range_pct = (
+                            ((sh_price - sl_price) / sh_price) * 100
+                            if sh_price > 0 else 0
+                        )
+                        vol_slice = volumes[sh_idx:sl_idx + 1]
+                        avg_vol = (
+                            sum(vol_slice) / len(vol_slice) if vol_slice else 0
+                        )
+                        contractions.append({
+                            'range_pct': range_pct,
+                            'high': sh_price,
+                            'low': sl_price,
+                            'high_idx': sh_idx,
+                            'low_idx': sl_idx,
+                            'avg_volume': avg_vol,
+                            'duration_bars': sl_idx - sh_idx,
+                        })
+                        i = j + 1  # advance past this low
+                        break
+                else:
+                    i += 1  # no low found after this high
+            else:
+                i += 1
+
+        return contractions
+
+    def _calculate_local_atr(self, highs, lows, closes, end_idx, period=14):
+        """
+        Calculate ATR from in-memory OHLCV arrays (no DB query).
+
+        Args:
+            highs:   list[float]
+            lows:    list[float]
+            closes:  list[float]
+            end_idx: calculate ATR ending at this bar index
+            period:  ATR period (default 14)
+
+        Returns:
+            (atr, atr_pct) -- both floats, or (None, None)
+        """
+        start = max(0, end_idx - period)
+        if end_idx - start < 2:
+            return None, None
+
+        true_ranges = []
+        for i in range(start + 1, end_idx + 1):
+            high_low = highs[i] - lows[i]
+            high_prev_close = abs(highs[i] - closes[i - 1])
+            low_prev_close = abs(lows[i] - closes[i - 1])
+            true_ranges.append(max(high_low, high_prev_close, low_prev_close))
+
+        if not true_ranges:
+            return None, None
+
+        atr = true_ranges[0]
+        for tr in true_ranges[1:]:
+            atr = (atr * (period - 1) + tr) / period
+
+        atr_pct = (atr / closes[end_idx]) * 100 if closes[end_idx] > 0 else None
+        return atr, atr_pct
+
+    def _validate_uptrend(self, closes, peak_idx, uptrend_bars=90):
+        """
+        Validate that a meaningful uptrend preceded the peak.
+
+        Measures the percentage gain from *uptrend_bars* bars before the
+        peak to the peak itself.
+
+        Args:
+            closes: list[float] close prices (full data array)
+            peak_idx: index of the consolidation peak
+            uptrend_bars: trading bars to look back (default 90 ~ 4.5 months)
+
+        Returns:
+            float: percentage gain into the peak, or None if insufficient data
+        """
+        lookback_idx = max(0, peak_idx - uptrend_bars)
+        if lookback_idx >= peak_idx:
+            return None
+
+        start_price = closes[lookback_idx]
+        peak_price = closes[peak_idx]
+
+        if start_price <= 0:
+            return None
+
+        return ((peak_price - start_price) / start_price) * 100
+
+    # ------------------------------------------------------------------
+    # Main VCP + cup-and-handle entry point
+    # ------------------------------------------------------------------
+
     def detect_vcp(self, symbol, end_date, lookback_days=120):
         """
         Detect Volatility Contraction Pattern (VCP) and cup-and-handle.
 
-        VCP characteristics:
-        - Series of price contractions (usually 2-4)
-        - Each contraction is tighter than the previous
-        - Volume tends to dry up during contractions
-        - Forms higher lows
-        - Price consolidates near highs
+        Uses swing-point-based detection to find natural contractions:
+        1. Validate prior uptrend (20%+ gain into peak)
+        2. Find swing highs / lows via adaptive N-bar method
+        3. Pair swings into contractions and check for tightening
+        4. Analyze per-contraction volume dry-up
+        5. Compute pivot from the final contraction's swing high
+        6. Score the pattern (0-100) with ATR-relative tolerances
 
         Also runs cup-and-handle detection and integrates scoring:
         - Cup+Handle+VCP in handle = premium setup (+20 score)
@@ -47,9 +208,11 @@ class PatternDetector:
         cursor = self.conn.cursor()
 
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-        # Fetch extra history for cup-and-handle (needs wider window)
-        cup_lookback = max(lookback_days, 180)
-        start_date = (end_date_obj - timedelta(days=cup_lookback)).strftime("%Y-%m-%d")
+        # Fetch extra history:
+        #   - 180 days for cup-and-handle
+        #   - ~130 extra days before lookback for uptrend validation (~90 trading days)
+        total_lookback = lookback_days + 180
+        start_date = (end_date_obj - timedelta(days=total_lookback)).strftime("%Y-%m-%d")
 
         # Get price and volume data
         cursor.execute("""
@@ -90,156 +253,231 @@ class PatternDetector:
         closes = [float(row[3]) for row in rows]
         volumes = [int(row[4]) for row in rows]
 
-        # --- Cup-and-handle detection (uses full data window) ----------
-        cup_handle = self.detect_cup_and_handle(highs, lows, closes, volumes, dates)
+        # --- Cup-and-handle detection (~180-day window from the end) ---
+        cup_bar_estimate = int(len(rows) * 180 / total_lookback) if total_lookback > 0 else len(rows)
+        cup_bar_estimate = max(cup_bar_estimate, 30)
+        cup_offset = max(0, len(rows) - cup_bar_estimate)
+        cup_handle = self.detect_cup_and_handle(
+            highs[cup_offset:], lows[cup_offset:], closes[cup_offset:],
+            volumes[cup_offset:], dates[cup_offset:]
+        )
 
-        # --- Standard VCP detection (uses lookback_days window) --------
-        # Trim to the original lookback_days for VCP analysis
-        if cup_lookback > lookback_days:
-            trading_days_per_calendar = len(rows) / cup_lookback if cup_lookback > 0 else 0.7
-            target_bars = int(lookback_days * trading_days_per_calendar)
-            if target_bars < len(rows):
-                offset = len(rows) - target_bars
-                vcp_highs = highs[offset:]
-                vcp_lows = lows[offset:]
-                vcp_closes = closes[offset:]
-                vcp_volumes = volumes[offset:]
-            else:
-                vcp_highs = highs
-                vcp_lows = lows
-                vcp_closes = closes
-                vcp_volumes = volumes
-        else:
-            vcp_highs = highs
-            vcp_lows = lows
-            vcp_closes = closes
-            vcp_volumes = volumes
+        # --- VCP detection (lookback_days window from the end) ---------
+        trading_days_ratio = len(rows) / total_lookback if total_lookback > 0 else 0.7
+        vcp_target_bars = int(lookback_days * trading_days_ratio)
+        vcp_target_bars = min(vcp_target_bars, len(rows))
+        vcp_start = max(0, len(rows) - vcp_target_bars)
 
-        # Find the highest high in the lookback period (potential starting point)
+        vcp_highs = highs[vcp_start:]
+        vcp_lows = lows[vcp_start:]
+        vcp_closes = closes[vcp_start:]
+        vcp_volumes = volumes[vcp_start:]
+
+        def _early_exit_with_cup():
+            """Return empty VCP result merged with any cup-handle data."""
+            result = dict(empty_result)
+            result.update(cup_handle)
+            return result
+
+        if len(vcp_highs) < 20:
+            return _early_exit_with_cup()
+
+        # Find the highest high in the lookback window (left wall / peak)
+        # Use last occurrence so that double-tops pick the most recent peak
         max_high = max(vcp_highs)
-        max_high_idx = vcp_highs.index(max_high)
+        max_high_local_idx = len(vcp_highs) - 1 - vcp_highs[::-1].index(max_high)
 
-        # Only analyze if max high is in first 60% of period (needs time to contract)
-        if max_high_idx > len(vcp_highs) * 0.6:
-            # Even if VCP fails, return cup-handle data if found
-            result = dict(empty_result)
-            result.update(cup_handle)
-            if cup_handle.get('pattern_type') is None and not cup_handle.get('cup_detected'):
-                result['pattern_type'] = None
-            return result
+        # Need at least 15 bars after the peak for contractions to form
+        remaining_bars = len(vcp_highs) - max_high_local_idx
+        if remaining_bars < 15:
+            return _early_exit_with_cup()
 
-        # Analyze contractions by dividing period after max high into segments
-        remaining_data = len(vcp_highs) - max_high_idx
-        if remaining_data < 20:
-            result = dict(empty_result)
-            result.update(cup_handle)
-            if cup_handle.get('pattern_type') is None and not cup_handle.get('cup_detected'):
-                result['pattern_type'] = None
-            return result
+        # Map local VCP index to full-array index for uptrend validation
+        peak_full_idx = vcp_start + max_high_local_idx
 
-        # Divide into segments to find contractions
-        segment_size = remaining_data // 4  # Look for up to 4 contractions
-        if segment_size < 5:
-            segment_size = 5
+        # --- Step 1: Validate prior uptrend ---
+        uptrend_gain = self._validate_uptrend(closes, peak_full_idx, uptrend_bars=90)
 
-        contractions = []
-        contraction_lows = []
+        if uptrend_gain is not None and uptrend_gain < 20:
+            # No meaningful uptrend -- sideways chop, not a VCP
+            return _early_exit_with_cup()
 
-        for i in range(4):
-            start_idx = max_high_idx + (i * segment_size)
-            end_idx = min(start_idx + segment_size, len(vcp_highs))
+        # --- Step 1b: Validate base depth (correction from peak) ---
+        # Minervini looks for bases with 10-50% correction from the peak.
+        # < 10% is just noise (not a real base), > 50% is a broken stock.
+        post_peak_lows = vcp_lows[max_high_local_idx:]
+        if post_peak_lows:
+            deepest_low = min(post_peak_lows)
+            base_depth_pct = ((max_high - deepest_low) / max_high) * 100
+            if base_depth_pct < 10 or base_depth_pct > 50:
+                return _early_exit_with_cup()
 
-            if start_idx >= len(vcp_highs):
-                break
+        # --- Step 2: Swing-point detection (adaptive N) ---
+        if remaining_bars < 40:
+            n_bars = 3
+        elif remaining_bars < 80:
+            n_bars = 4
+        else:
+            n_bars = 5
 
-            segment_highs = vcp_highs[start_idx:end_idx]
-            segment_lows = vcp_lows[start_idx:end_idx]
+        swing_points = self._find_swing_points(vcp_highs, vcp_lows, n_bars)
 
-            if segment_highs and segment_lows:
-                seg_high = max(segment_highs)
-                seg_low = min(segment_lows)
-                contraction_pct = ((seg_high - seg_low) / seg_high) * 100
-                contractions.append(contraction_pct)
-                contraction_lows.append(seg_low)
+        # --- Step 3: Pair swings into contractions ---
+        contractions = self._pair_contractions(
+            swing_points, vcp_volumes, max_high_local_idx
+        )
 
         if len(contractions) < 2:
-            result = dict(empty_result)
-            result.update(cup_handle)
-            if cup_handle.get('pattern_type') is None and not cup_handle.get('cup_detected'):
-                result['pattern_type'] = None
-            return result
+            return _early_exit_with_cup()
 
-        # Check for volatility contraction (each range smaller than previous)
-        # A true VCP requires continuously tightening contractions;
-        # reset the count if a contraction expands beyond the 10% tolerance.
-        contraction_count = 1
-        for i in range(1, len(contractions)):
-            if contractions[i] < contractions[i-1] * 1.1:  # Allow 10% tolerance
-                contraction_count += 1
+        # --- Step 4: Tightening and higher lows ---
+        # ATR at the peak for volatility-relative tolerance
+        atr, atr_pct = self._calculate_local_atr(
+            vcp_highs, vcp_lows, vcp_closes, max_high_local_idx
+        )
+        atr_tolerance = min(atr_pct * 0.5, 1.5) if atr_pct else 1.0  # fallback
+
+        # Count consecutive tightening from the end (recent matters most)
+        consecutive_tightening = 1
+        for i in range(len(contractions) - 1, 0, -1):
+            if contractions[i]['range_pct'] <= contractions[i - 1]['range_pct'] + atr_tolerance:
+                consecutive_tightening += 1
             else:
-                contraction_count = 1  # Reset on expansion
-
-        # Check for higher lows (bullish sign)
-        higher_lows = True
-        for i in range(1, len(contraction_lows)):
-            if contraction_lows[i] < contraction_lows[i-1] * 0.98:  # Allow 2% tolerance
-                higher_lows = False
                 break
 
-        # Analyze volume contraction
-        early_volume = vcp_volumes[max_high_idx:max_high_idx + segment_size]
-        late_volume = vcp_volumes[-segment_size:]
+        # Descending highs -- each contraction's swing high should be
+        # lower than (or approximately equal to) the previous one.
+        descending_high_count = 0
+        for i in range(1, len(contractions)):
+            if contractions[i]['high'] <= contractions[i - 1]['high'] * 1.02:
+                descending_high_count += 1
+        descending_high_ratio = (
+            descending_high_count / (len(contractions) - 1)
+            if len(contractions) > 1 else 0
+        )
 
-        avg_early_volume = sum(early_volume) / len(early_volume) if early_volume else 0
-        avg_late_volume = sum(late_volume) / len(late_volume) if late_volume else 0
+        # Higher lows -- graduated ratio
+        higher_low_count = 0
+        for i in range(1, len(contractions)):
+            if contractions[i]['low'] >= contractions[i - 1]['low'] * 0.98:
+                higher_low_count += 1
+        higher_low_ratio = (
+            higher_low_count / (len(contractions) - 1)
+            if len(contractions) > 1 else 0
+        )
 
-        volume_contraction = avg_late_volume < avg_early_volume * 0.7  # Volume dried up 30%+
+        # --- Step 5: Per-contraction volume analysis ---
+        first_vol = contractions[0]['avg_volume']
+        last_vol = contractions[-1]['avg_volume']
+        volume_dryup_ratio = last_vol / first_vol if first_vol > 0 else 1.0
 
-        # Calculate latest contraction percentage
-        latest_contraction_pct = contractions[-1] if contractions else None
+        # Binary flag for backward compatibility
+        volume_contraction = volume_dryup_ratio < 0.70
 
-        # Determine pivot price (recent high that acts as resistance)
-        recent_highs = vcp_highs[-20:] if len(vcp_highs) >= 20 else vcp_highs
-        pivot_price = max(recent_highs)
+        # --- Step 6: Pivot price ---
+        # Use the swing high of the final contraction
+        pivot_price = contractions[-1]['high']
+        current_price = vcp_closes[-1]
 
-        # Calculate VCP score (0-100)
+        # If price has already broken above, use the highest recent swing high
+        if current_price > pivot_price:
+            recent_swing_highs = [
+                p for p in swing_points
+                if p[2] == 'high' and p[0] > max_high_local_idx
+            ]
+            if recent_swing_highs:
+                pivot_price = max(sh[1] for sh in recent_swing_highs)
+
+        # Last contraction metrics (for stop loss and downstream consumers)
+        last_contraction_low = contractions[-1]['low']
+        latest_contraction_pct = contractions[-1]['range_pct']
+
+        # --- Step 7: Scoring (0-100) ---
         vcp_score = 0
 
-        # Score based on number of contractions (max 25 points)
-        vcp_score += min(contraction_count * 8, 25)
-
-        # Score based on tightness of latest contraction (max 25 points)
-        if latest_contraction_pct:
-            if latest_contraction_pct <= 5:
-                vcp_score += 25
-            elif latest_contraction_pct <= 10:
-                vcp_score += 20
-            elif latest_contraction_pct <= 15:
-                vcp_score += 15
-            elif latest_contraction_pct <= 20:
+        # Prior uptrend quality (10 pts max)
+        if uptrend_gain is not None:
+            if uptrend_gain >= 30:
                 vcp_score += 10
-            else:
+            elif uptrend_gain >= 20:
                 vcp_score += 5
 
-        # Score for higher lows (20 points)
-        if higher_lows:
-            vcp_score += 20
+        # Contraction count (15 pts max) -- 5 per contraction
+        vcp_score += min(len(contractions) * 5, 15)
 
-        # Score for volume contraction (20 points)
-        if volume_contraction:
-            vcp_score += 20
+        # Tightening quality (20 pts max)
+        tightening_ratio = (
+            consecutive_tightening / len(contractions) if contractions else 0
+        )
+        vcp_score += int(tightening_ratio * 20)
 
-        # Score for price near pivot (10 points)
-        current_price = vcp_closes[-1]
-        distance_from_pivot = ((pivot_price - current_price) / pivot_price) * 100
-        if distance_from_pivot <= 3:
-            vcp_score += 10
-        elif distance_from_pivot <= 5:
+        # Final contraction tightness (15 pts max) -- ATR-relative
+        if atr_pct and atr_pct > 0:
+            atr_multiple = latest_contraction_pct / atr_pct
+            if atr_multiple <= 1.0:
+                vcp_score += 15   # Extremely tight
+            elif atr_multiple <= 2.0:
+                vcp_score += 12
+            elif atr_multiple <= 3.0:
+                vcp_score += 8
+            elif atr_multiple <= 5.0:
+                vcp_score += 4
+            else:
+                vcp_score += 1
+        else:
+            # Fallback: absolute tightness thresholds
+            if latest_contraction_pct <= 5:
+                vcp_score += 15
+            elif latest_contraction_pct <= 10:
+                vcp_score += 12
+            elif latest_contraction_pct <= 15:
+                vcp_score += 8
+            elif latest_contraction_pct <= 20:
+                vcp_score += 4
+            else:
+                vcp_score += 1
+
+        # Higher lows (10 pts max) -- graduated
+        vcp_score += int(higher_low_ratio * 10)
+
+        # Descending highs (10 pts max) -- each contraction high <= previous
+        vcp_score += int(descending_high_ratio * 10)
+
+        # Volume dry-up (15 pts max) -- graduated
+        if volume_dryup_ratio < 0.50:
+            vcp_score += 15
+        elif volume_dryup_ratio < 0.70:
+            vcp_score += 12
+        elif volume_dryup_ratio < 0.85:
             vcp_score += 7
-        elif distance_from_pivot <= 10:
-            vcp_score += 4
+        else:
+            vcp_score += 2
 
-        # --- Integrate cup-and-handle scoring --------------------------
+        # Price near pivot (10 pts max)
+        distance_from_pivot = (
+            ((pivot_price - current_price) / pivot_price) * 100
+            if pivot_price > 0 else 100
+        )
+        abs_distance = abs(distance_from_pivot)
+
+        if distance_from_pivot >= 0:
+            # Below pivot -- reward proximity
+            if abs_distance <= 3:
+                vcp_score += 10
+            elif abs_distance <= 5:
+                vcp_score += 7
+            elif abs_distance <= 10:
+                vcp_score += 4
+        else:
+            # Above pivot -- breakout zone, taper off
+            if abs_distance <= 3:
+                vcp_score += 8
+            elif abs_distance <= 5:
+                vcp_score += 5
+            else:
+                vcp_score += 0  # Too extended
+
+        # --- Cup-and-handle integration (same as before) ---------------
         pattern_type = cup_handle.get('pattern_type')
 
         if cup_handle['cup_detected'] and cup_handle['handle_detected']:
@@ -251,29 +489,33 @@ class PatternDetector:
                 pattern_type = 'CUP_HANDLE'
         elif cup_handle['cup_detected']:
             vcp_score += 5  # Cup structure found but no proper handle
-            # Keep pattern_type as None or VCP_ONLY below
 
-        # Determine if VCP is detected (score >= 50 and at least 2 contractions)
+        # Detection threshold: score >= 50 and at least 2 contractions
+        contraction_count = len(contractions)
         vcp_detected = vcp_score >= 50 and contraction_count >= 2
 
-        # If VCP is detected but no cup-handle pattern, label as VCP_ONLY
         if vcp_detected and pattern_type is None:
             pattern_type = 'VCP_ONLY'
 
-        # Track the low of the last (tightest) contraction for stop loss placement
-        last_contraction_low = contraction_lows[-1] if contraction_lows else None
-
-        # Cap VCP score at 100
         vcp_score = min(vcp_score, 100)
 
         return {
             'vcp_detected': vcp_detected,
             'vcp_score': vcp_score,
             'contraction_count': contraction_count,
-            'latest_contraction_pct': latest_contraction_pct,
+            'latest_contraction_pct': (
+                round(latest_contraction_pct, 2)
+                if latest_contraction_pct is not None else None
+            ),
             'volume_contraction': volume_contraction,
-            'pivot_price': pivot_price,
-            'last_contraction_low': last_contraction_low,
+            'pivot_price': (
+                round(pivot_price, 2)
+                if pivot_price is not None else None
+            ),
+            'last_contraction_low': (
+                round(last_contraction_low, 2)
+                if last_contraction_low is not None else None
+            ),
             # Cup-and-handle fields
             'cup_detected': cup_handle['cup_detected'],
             'cup_depth_pct': cup_handle['cup_depth_pct'],
@@ -336,8 +578,7 @@ class PatternDetector:
         if search_end < 10:
             return empty
 
-        left_lip_high = max(highs[:search_end])
-        left_lip_idx = highs.index(left_lip_high)
+        left_lip_idx, left_lip_high = max(enumerate(highs[:search_end]), key=lambda x: x[1])
 
         # Look for the cup bottom: lowest low between the left lip and the
         # point where price recovers close to that high.
@@ -475,8 +716,8 @@ class PatternDetector:
                             avg_first = first_half_vol / half_len
                             avg_second = second_half_vol / (len(handle_volumes) - half_len)
                             if avg_first > 0 and avg_second < avg_first * 0.75:
-                                # Volume drying up supports VCP in handle
-                                pass  # handle_has_vcp already set by contraction check
+                                # Volume dry-up confirms VCP in handle
+                                handle_has_vcp = True
 
         # --- Determine pattern type ------------------------------------
         cup_detected = True

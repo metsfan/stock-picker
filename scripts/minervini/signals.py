@@ -16,16 +16,24 @@ class SignalGenerator:
         """
         Determine the market stage (1-4) based on Minervini's stage analysis:
 
-        Stage 1 - Basing/Accumulation: Consolidating after decline, preparing for advance
-        Stage 2 - Advancing/Markup: Strong uptrend (ideal buy zone)
-        Stage 3 - Topping/Distribution: Peaked and losing momentum
-        Stage 4 - Declining/Markdown: Downtrend
+        Stage 2 - Advancing/Markup: Strong uptrend (ideal buy zone).
+                  All MAs aligned, 200-day MA rising, RS >= 60.
+        Stage 4 - Declining/Markdown: Price below 200-day MA.
+                  Strict criteria (MA declining, far from high, weak RS) for
+                  confirmed downtrend; catch-all for any stock below 200 MA.
+        Stage 3 - Topping/Distribution: Price above 200 MA but showing 2+
+                  weakening signals (MA misalignment, flat/declining 200-day
+                  MA trend, far from high, or weak RS).
+        Stage 1 - Basing/Accumulation: Price above 200 MA with at most one
+                  weakening signal. Consolidating, preparing for advance.
+
+        Evaluation order: 2 -> 4 -> 3 -> 1.
 
         Args:
             close_price: Current closing price
             ma_50, ma_150, ma_200: Moving averages
-            ma_200_trend: Trend of 200-day MA
-            percent_from_52w_high: Distance from 52-week high
+            ma_200_trend: Trend of 200-day MA (% change over ~1 month)
+            percent_from_52w_high: Distance from 52-week high (negative %)
             relative_strength: RS score (0-100)
 
         Returns:
@@ -57,16 +65,32 @@ class SignalGenerator:
             return 4
 
         # Stage 3: Topping/Distribution
-        # Price still elevated but losing momentum, MAs flattening
-        if (price_above_200 and
-            (not ma_150_above_200 or not ma_50_above_150 or
-             (ma_200_trend is not None and ma_200_trend < 0.5) or
-             percent_from_52w_high < -15 or
-             (relative_strength is not None and relative_strength < 60))):
-            return 3
+        # Price still elevated but losing momentum, MAs flattening.
+        # Require 2+ weakening signals to avoid cliff effects from a single
+        # marginal miss (e.g. RS of 59 alone shouldn't mean "topping").
+        if price_above_200:
+            stage3_signals = 0
+            if not ma_150_above_200:
+                stage3_signals += 1
+            if not ma_50_above_150:
+                stage3_signals += 1
+            if ma_200_trend is not None and ma_200_trend <= 0:
+                stage3_signals += 1
+            if percent_from_52w_high < -15:
+                stage3_signals += 1
+            if relative_strength is not None and relative_strength < 60:
+                stage3_signals += 1
+
+            if stage3_signals >= 2:
+                return 3
+
+        # Late-stage decline: price below 200 MA but doesn't meet full Stage 4 criteria.
+        # Still declining -- never classify as Stage 1 (basing requires price near/above 200 MA).
+        if not price_above_200:
+            return 4
 
         # Stage 1: Basing/Accumulation (default for everything else)
-        # Consolidating, MAs converging, preparing for next move
+        # Price above 200 MA, MAs converging, preparing for next move
         return 1
 
     def calculate_entry_range(self, close_price, pivot_price, ema_10, ema_21):
@@ -125,7 +149,9 @@ class SignalGenerator:
         4. VCP contraction low: Below last contraction's low
         5. Swing low: Below most recent swing low
 
-        Uses the HIGHEST (tightest) stop, clamped between 3% and 8%.
+        Uses the HIGHEST (tightest) stop, then clamps:
+        - tightest_stop: no closer than 3% below entry (avoid whipsaw)
+        - max_loss_stop: no farther than 8% below entry (Minervini max)
 
         Args:
             entry_price: Expected entry price
@@ -167,10 +193,10 @@ class SignalGenerator:
         # Use the HIGHEST stop (tightest risk)
         stop = max(stops)
 
-        # Clamp: don't tighter than 3% (avoid whipsaw from noise)
-        min_stop = entry_price * 0.97
-        if stop > min_stop:
-            stop = min_stop
+        # Clamp: no tighter than 3% (avoid whipsaw from noise)
+        tightest_stop = entry_price * 0.97
+        if stop > tightest_stop:
+            stop = tightest_stop
 
         # Clamp: never more than 8% loss (Minervini's absolute max)
         if stop < max_loss_stop:
@@ -227,7 +253,7 @@ class SignalGenerator:
         return {
             'target_conservative': round(target_2r, 2),
             'target_primary': round(primary_target, 2),
-            'target_aggressive': round(target_25pct, 2),
+            'target_aggressive': round(max(target_3r, target_25pct), 2),
             'partial_profit_at': round(target_20pct, 2),
             'climax_warning_price': round(climax_price, 2) if climax_price else None,
             'risk_reward_ratio': risk_reward,
@@ -321,7 +347,9 @@ class SignalGenerator:
                 failed = metrics.get('criteria_failed', '')
                 reasons.append(f'{criteria_count}/9 criteria met ({failed})')
 
-            if vcp_score and 30 <= vcp_score < 50:
+            if vcp and vcp_score >= 50:
+                reasons.append(f'VCP confirmed (score {vcp_score:.0f})')
+            elif vcp_score and 30 <= vcp_score < 50:
                 reasons.append(f'VCP forming (score {vcp_score:.0f})')
             elif not vcp:
                 reasons.append('No VCP pattern yet')
@@ -589,9 +617,6 @@ class SignalGenerator:
 
             else:
                 reasons.append('Hold -- monitor for deterioration')
-
-            if not reasons:
-                reasons.append('Hold position')
 
         # ---- Calculate stop levels ----
 

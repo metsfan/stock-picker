@@ -5,8 +5,6 @@ Includes average dollar volume, volume ratio (today vs average),
 and multi-timeframe return calculations.
 """
 
-from datetime import datetime, timedelta
-
 
 class VolumeAnalyzer:
     """Calculates volume metrics and multi-timeframe returns."""
@@ -48,7 +46,7 @@ class VolumeAnalyzer:
             return None
 
         dollar_volumes = [float(row[0]) * int(row[1]) for row in rows]
-        return int(sum(dollar_volumes) / len(dollar_volumes))
+        return round(sum(dollar_volumes) / len(dollar_volumes))
 
     def calculate_volume_ratio(self, symbol, date, avg_days=50):
         """
@@ -80,9 +78,12 @@ class VolumeAnalyzer:
 
         today_volume = int(result[0])
 
-        # Get average volume (excluding today)
+        # Get average volume (excluding today).
+        # Use COUNT to enforce a minimum data threshold -- need at least
+        # half the requested days for a reliable average (same rule as
+        # calculate_avg_dollar_volume).
         cursor.execute("""
-            SELECT AVG(volume) FROM (
+            SELECT AVG(volume), COUNT(*) FROM (
                 SELECT volume FROM stock_prices
                 WHERE symbol = %s AND date < %s
                 ORDER BY date DESC
@@ -97,6 +98,11 @@ class VolumeAnalyzer:
             return None
 
         avg_volume = float(result[0])
+        row_count = int(result[1])
+
+        if row_count < avg_days // 2:
+            return None
+
         return round(today_volume / avg_volume, 2)
 
     def calculate_returns(self, symbol, end_date):
@@ -106,6 +112,9 @@ class VolumeAnalyzer:
         IBD-style momentum analysis uses weighted returns across timeframes.
         Strong stocks show positive returns across all timeframes.
 
+        Uses exact trading-day counting (OFFSET) rather than a calendar-day
+        approximation, so the 12-month return is a true 252-trading-day return.
+
         Args:
             symbol: Stock symbol
             end_date: Date to calculate returns from
@@ -114,7 +123,6 @@ class VolumeAnalyzer:
             dict: Returns for each timeframe or None values if insufficient data
         """
         cursor = self.conn.cursor()
-        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
 
         # Get current price
         cursor.execute("""
@@ -138,14 +146,15 @@ class VolumeAnalyzer:
         }
 
         for key, days in timeframes.items():
-            start_date = (end_date_obj - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
-
+            # Count back exactly N trading days using OFFSET.
+            # OFFSET 0 = most recent day <= end_date, so OFFSET days = (days+1)th row back,
+            # which is the close from exactly `days` trading days ago.
             cursor.execute("""
                 SELECT close FROM stock_prices
-                WHERE symbol = %s AND date >= %s AND date < %s
-                ORDER BY date ASC
-                LIMIT 1
-            """, (symbol, start_date, end_date))
+                WHERE symbol = %s AND date <= %s
+                ORDER BY date DESC
+                LIMIT 1 OFFSET %s
+            """, (symbol, end_date, days))
 
             result = cursor.fetchone()
             if result and result[0]:

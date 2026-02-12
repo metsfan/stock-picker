@@ -70,11 +70,30 @@ class EarningsAnalyzer:
             if prev_quarter_eps > 0:
                 qoq_eps_growth = ((latest_eps - prev_quarter_eps) / prev_quarter_eps) * 100
 
+        # Build a lookup by (fiscal_year, fiscal_quarter) for explicit YoY matching.
+        # This avoids positional assumptions that break when quarterly reports
+        # have gaps, restated periods, or fiscal year changes.
+        quarter_lookup = {}
+        for q in quarters:
+            fy = q[1]  # fiscal_year
+            fq = q[2]  # fiscal_quarter
+            if fy is not None and fq is not None:
+                quarter_lookup[(fy, fq)] = q
+
+        def _find_year_ago(q):
+            """Find the same fiscal quarter from the prior year."""
+            fy = q[1]
+            fq = q[2]
+            if fy is not None and fq is not None:
+                return quarter_lookup.get((fy - 1, fq))
+            return None
+
         # Year-over-year (YoY) growth for latest quarter
         yoy_eps_growth = None
         yoy_revenue_growth = None
-        if len(quarters) >= 5:
-            year_ago = quarters[4]  # 4 quarters back = same quarter last year
+        year_ago = _find_year_ago(latest)
+
+        if year_ago:
             year_ago_eps = float(year_ago[3]) if year_ago[3] else None
             year_ago_revenue = float(year_ago[4]) if year_ago[4] else None
 
@@ -91,30 +110,26 @@ class EarningsAnalyzer:
         acceleration = False
         yoy_growth_rates = []
 
-        if len(quarters) >= 8:
-            # Calculate YoY growth for each of the last 4 quarters
-            # quarters[0] vs quarters[4] = most recent YoY
-            # quarters[1] vs quarters[5] = previous quarter's YoY
-            # quarters[2] vs quarters[6] = 2 quarters ago YoY
-            # quarters[3] vs quarters[7] = 3 quarters ago YoY
-            for i in range(4):
-                current_q = quarters[i]
-                year_ago_q = quarters[i + 4]
+        # Walk the most recent quarters and pair each with its year-ago match
+        for q in quarters[:4]:
+            year_ago_q = _find_year_ago(q)
+            if not year_ago_q:
+                continue
 
-                current_eps = float(current_q[3]) if current_q[3] else None
-                year_ago_eps = float(year_ago_q[3]) if year_ago_q[3] else None
+            current_eps = float(q[3]) if q[3] else None
+            year_ago_eps = float(year_ago_q[3]) if year_ago_q[3] else None
 
-                if current_eps and year_ago_eps and year_ago_eps > 0:
-                    yoy_growth = ((current_eps - year_ago_eps) / year_ago_eps) * 100
-                    yoy_growth_rates.append(yoy_growth)
+            if current_eps and year_ago_eps and year_ago_eps > 0:
+                yoy_growth = ((current_eps - year_ago_eps) / year_ago_eps) * 100
+                yoy_growth_rates.append(yoy_growth)
 
-            # Acceleration = YoY growth rate is improving each quarter
-            # yoy_growth_rates[0] is most recent, should be >= yoy_growth_rates[1], etc.
-            if len(yoy_growth_rates) >= 3:
-                acceleration = all(
-                    yoy_growth_rates[i] >= yoy_growth_rates[i+1]
-                    for i in range(len(yoy_growth_rates)-1)
-                )
+        # Acceleration = YoY growth rate is improving each quarter
+        # yoy_growth_rates[0] is most recent, should be >= yoy_growth_rates[1], etc.
+        if len(yoy_growth_rates) >= 3:
+            acceleration = all(
+                yoy_growth_rates[i] >= yoy_growth_rates[i+1]
+                for i in range(len(yoy_growth_rates)-1)
+            )
 
         return {
             'latest_eps': latest_eps,
@@ -186,8 +201,11 @@ class EarningsAnalyzer:
         avg_revenue_surprise = sum(revenue_surprises) / len(revenue_surprises) if revenue_surprises else None
 
         # Consistency: All beats = very strong
-        all_beats = beats == len(results) and misses == 0
-        mostly_beats = beats >= len(results) * 0.75 if len(results) > 0 else False
+        # Use count of non-null surprises (beats + misses) as denominator,
+        # not len(results), so null surprise rows don't penalize the stock.
+        evaluated = beats + misses
+        all_beats = evaluated > 0 and misses == 0
+        mostly_beats = beats >= evaluated * 0.75 if evaluated > 0 else False
 
         return {
             'total_earnings': len(results),

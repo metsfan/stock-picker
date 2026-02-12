@@ -116,7 +116,7 @@ class RelativeStrengthCalculator:
              (end_date_obj - timedelta(days=273)).strftime("%Y-%m-%d"), 0.20),             # Q4: ~9-12 months ago
         ]
 
-        # Get all symbols with sufficient data
+        # Get all symbols
         cursor.execute("""
             SELECT DISTINCT symbol FROM ticker_details
         """)

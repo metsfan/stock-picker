@@ -142,10 +142,10 @@ class TechnicalIndicators:
 
     def calculate_atr(self, symbol, end_date, period=14):
         """
-        Calculate Average True Range (ATR) - a volatility indicator.
+        Calculate Average True Range (ATR) using Wilder smoothing.
 
         True Range = max(high-low, abs(high-prev_close), abs(low-prev_close))
-        ATR = Average of True Range over period
+        ATR = Wilder smoothed average: (prev_ATR * (period-1) + TR) / period
 
         Used for:
         - Position sizing (smaller positions for volatile stocks)
@@ -192,7 +192,11 @@ class TechnicalIndicators:
         if not true_ranges:
             return None, None
 
-        atr = sum(true_ranges) / len(true_ranges)
+        # Wilder smoothing (matches _calculate_local_atr in patterns.py)
+        atr = true_ranges[0]
+        for tr in true_ranges[1:]:
+            atr = (atr * (period - 1) + tr) / period
+
         current_price = float(rows[-1][2])
         atr_percent = (atr / current_price) * 100
 
