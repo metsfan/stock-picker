@@ -347,6 +347,17 @@
                             </div>
                         </div>
                         
+                        <!-- Chart Type Toggle -->
+                        <div class="mb-2">
+                            <div class="d-flex align-items-center gap-2">
+                                <label class="form-label mb-0">Chart:</label>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Chart type">
+                                    <button type="button" class="btn btn-outline-secondary chart-type-btn active" data-type="candlestick">Candles</button>
+                                    <button type="button" class="btn btn-outline-secondary chart-type-btn" data-type="line">Line</button>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- Price Chart Canvas -->
                         <div class="chart-container mb-2">
                             <canvas id="stockChart"></canvas>
@@ -1332,6 +1343,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <!-- Chart.js Zoom Plugin -->
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<!-- Chart.js Financial (Candlestick) - Luxon must load first for date adapter -->
+<script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
 <!-- Marked.js for Markdown Rendering -->
 <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 <script>
@@ -1473,6 +1488,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const originalData = {
             dates: [...chartData.dates],
             prices: [...chartData.prices],
+            opens: [...(chartData.opens || chartData.prices)],  // fallback to close if no open
             highs: [...chartData.highs],
             lows: [...chartData.lows],
             volumes: [...chartData.volumes]
@@ -1484,73 +1500,55 @@ document.addEventListener('DOMContentLoaded', function() {
         startDateInput.value = chartData.dates[0];
         endDateInput.value = chartData.dates[chartData.dates.length - 1];
         
-        const ctx = document.getElementById('stockChart').getContext('2d');
+        // Current filtered data (used by volume chart for bar colors)
+        let currentFilteredData = {
+            dates: [...chartData.dates],
+            prices: [...chartData.prices],
+            opens: [...originalData.opens],
+            highs: [...chartData.highs],
+            lows: [...chartData.lows],
+            volumes: [...chartData.volumes]
+        };
         
-        // Determine if price is up or down overall
-        const startPrice = chartData.prices[0];
-        const endPrice = chartData.prices[chartData.prices.length - 1];
-        const isUp = endPrice >= startPrice;
-        const priceColor = isUp ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)';
-        const priceColorTransparent = isUp ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
-        
-        // Create gradient for price line
-        const gradient = ctx.createLinearGradient(0, 0, 0, 450);
-        if (isUp) {
-            gradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
-            gradient.addColorStop(0.5, 'rgba(16, 185, 129, 0.15)');
-            gradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
-        } else {
-            gradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
-            gradient.addColorStop(0.5, 'rgba(239, 68, 68, 0.15)');
-            gradient.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+        // Build OHLC data for candlestick
+        function buildCandlestickData(dates, opens, highs, lows, prices) {
+            return dates.map((d, i) => ({
+                x: luxon.DateTime.fromISO(d).toMillis(),
+                o: opens[i] ?? prices[i],
+                h: highs[i] ?? prices[i],
+                l: lows[i] ?? prices[i],
+                c: prices[i]
+            })).filter(p => p.o != null && p.c != null);
         }
         
-        const stockChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: chartData.dates,
-                datasets: [
-                    {
-                        label: '💰 Price',
-                        data: chartData.prices,
-                        borderColor: priceColor,
-                        backgroundColor: gradient,
-                        borderWidth: 1.5,
-                        fill: true,
-                        tension: 0.4,
-                        yAxisID: 'y',
-                        pointRadius: 0,
-                        pointHoverRadius: 0,
-                        pointHoverBackgroundColor: priceColor,
-                        pointHoverBorderColor: '#fff',
-                        pointHoverBorderWidth: 0,
+        // Price chart type: 'candlestick' (default) or 'line'
+        let priceChartType = 'candlestick';
+        let stockChart;
+        
+        function createStockChart() {
+            if (stockChart) stockChart.destroy();
+            const chartCtx = document.getElementById('stockChart').getContext('2d');
+            const dates = currentFilteredData.dates;
+            const prices = currentFilteredData.prices;
+            const opens = currentFilteredData.opens;
+            const highs = currentFilteredData.highs;
+            const lows = currentFilteredData.lows;
+            
+            if (priceChartType === 'candlestick') {
+                const candleData = buildCandlestickData(dates, opens, highs, lows, prices);
+                stockChart = new Chart(chartCtx, {
+                    type: 'candlestick',
+                    data: {
+                        datasets: [{
+                            label: '💰 Price',
+                            data: candleData,
+                            color: {
+                                up: 'rgba(16, 185, 129, 0.8)',
+                                down: 'rgba(239, 68, 68, 0.8)',
+                                unchanged: 'rgba(156, 163, 175, 0.8)'
+                            }
+                        }]
                     },
-                    {
-                        label: '📈 52W High',
-                        data: chartData.highs,
-                        borderColor: 'rgba(16, 185, 129, 0.35)',
-                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
-                        borderWidth: 1,
-                        borderDash: [6, 3],
-                        fill: false,
-                        pointRadius: 0,
-                        pointHoverRadius: 0,
-                        yAxisID: 'y',
-                    },
-                    {
-                        label: '📉 52W Low',
-                        data: chartData.lows,
-                        borderColor: 'rgba(239, 68, 68, 0.35)',
-                        backgroundColor: 'rgba(239, 68, 68, 0.05)',
-                        borderWidth: 1,
-                        borderDash: [6, 3],
-                        fill: false,
-                        pointRadius: 0,
-                        pointHoverRadius: 0,
-                        yAxisID: 'y',
-                    }
-                ]
-            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -1674,28 +1672,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 },
                 scales: {
                     x: {
+                        type: 'time',
+                        time: { unit: 'day', displayFormats: { day: 'MMM d', week: 'MMM d', month: 'MMM', year: 'yyyy' } },
                         display: true,
-                        grid: {
-                            display: true,
-                            color: 'rgba(156, 163, 175, 0.1)',
-                            drawBorder: false,
-                            drawTicks: false,
-                        },
-                        border: {
-                            display: false
-                        },
-                        title: {
-                            display: false
-                        },
+                        grid: { display: true, color: 'rgba(156, 163, 175, 0.1)', drawBorder: false, drawTicks: false },
+                        border: { display: false },
+                        title: { display: false },
                         ticks: {
                             maxTicksLimit: window.innerWidth < 768 ? 6 : 12,
                             maxRotation: 45,
                             minRotation: 45,
                             color: '#6b7280',
-                            font: {
-                                size: window.innerWidth < 768 ? 9 : 11,
-                                family: "'Inter', 'Segoe UI', 'Roboto', sans-serif"
-                            },
+                            font: { size: window.innerWidth < 768 ? 9 : 11, family: "'Inter', 'Segoe UI', 'Roboto', sans-serif" },
                             padding: 4
                         }
                     },
@@ -1703,44 +1691,202 @@ document.addEventListener('DOMContentLoaded', function() {
                         type: 'linear',
                         display: true,
                         position: 'left',
-                        grid: {
-                            display: true,
-                            color: 'rgba(156, 163, 175, 0.15)',
-                            drawBorder: false,
-                            drawTicks: false,
-                        },
-                        border: {
-                            display: false
-                        },
-                        title: {
-                            display: false
-                        },
+                        grid: { display: true, color: 'rgba(156, 163, 175, 0.15)', drawBorder: false, drawTicks: false },
+                        border: { display: false },
+                        title: { display: false },
                         ticks: {
-                            callback: function(value) {
-                                return '$' + value.toFixed(2);
-                            },
+                            callback: function(value) { return '$' + value.toFixed(2); },
                             color: '#6b7280',
-                            font: {
-                                size: window.innerWidth < 768 ? 9 : 11,
-                                family: "'Inter', 'Segoe UI', 'Roboto', sans-serif"
-                            },
+                            font: { size: window.innerWidth < 768 ? 9 : 11, family: "'Inter', 'Segoe UI', 'Roboto', sans-serif" },
                             padding: 4
                         }
                     }
                 }
             }
         });
+            } else {
+                const lineStartPrice = prices[0];
+                const lineEndPrice = prices[prices.length - 1];
+                const lineIsUp = lineEndPrice >= lineStartPrice;
+                const linePriceColor = lineIsUp ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)';
+                const lineGradient = chartCtx.createLinearGradient(0, 0, 0, 450);
+                if (lineIsUp) {
+                    lineGradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
+                    lineGradient.addColorStop(0.5, 'rgba(16, 185, 129, 0.15)');
+                    lineGradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+                } else {
+                    lineGradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
+                    lineGradient.addColorStop(0.5, 'rgba(239, 68, 68, 0.15)');
+                    lineGradient.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+                }
+                stockChart = new Chart(chartCtx, {
+                    type: 'line',
+                    data: {
+                        labels: dates,
+                        datasets: [
+                            {
+                                label: '💰 Price',
+                                data: prices,
+                                borderColor: linePriceColor,
+                                backgroundColor: lineGradient,
+                                borderWidth: 1.5,
+                                fill: true,
+                                tension: 0.4,
+                                yAxisID: 'y',
+                                pointRadius: 0,
+                                pointHoverRadius: 0,
+                                pointHoverBackgroundColor: linePriceColor,
+                                pointHoverBorderColor: '#fff',
+                                pointHoverBorderWidth: 0,
+                            },
+                            {
+                                label: '📈 52W High',
+                                data: highs,
+                                borderColor: 'rgba(16, 185, 129, 0.35)',
+                                borderWidth: 1,
+                                borderDash: [6, 3],
+                                fill: false,
+                                pointRadius: 0,
+                                pointHoverRadius: 0,
+                                yAxisID: 'y',
+                            },
+                            {
+                                label: '📉 52W Low',
+                                data: lows,
+                                borderColor: 'rgba(239, 68, 68, 0.35)',
+                                borderWidth: 1,
+                                borderDash: [6, 3],
+                                fill: false,
+                                pointRadius: 0,
+                                pointHoverRadius: 0,
+                                yAxisID: 'y',
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { left: 5, right: 5, top: 5, bottom: 5 } },
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                align: 'start',
+                                labels: {
+                                    usePointStyle: true,
+                                    pointStyle: 'circle',
+                                    padding: 12,
+                                    boxWidth: 8,
+                                    boxHeight: 8,
+                                    font: { size: window.innerWidth < 768 ? 10 : 12, family: "'Inter', 'Segoe UI', 'Roboto', sans-serif", weight: '500' },
+                                    color: '#374151'
+                                }
+                            },
+                            tooltip: {
+                                enabled: true,
+                                mode: 'index',
+                                intersect: false,
+                                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                                titleColor: '#fff',
+                                bodyColor: '#e5e7eb',
+                                padding: 12,
+                                borderColor: 'rgba(99, 102, 241, 0.3)',
+                                borderWidth: 1,
+                                cornerRadius: 8,
+                                displayColors: true,
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) label += ': ';
+                                        if (context.parsed.y !== null) label += '$' + context.parsed.y.toFixed(2);
+                                        return label;
+                                    },
+                                    title: function(tooltipItems) {
+                                        return '📅 ' + tooltipItems[0].label;
+                                    }
+                                }
+                            },
+                            zoom: {
+                                pan: { enabled: true, mode: 'x', modifierKey: null, threshold: 5 },
+                                zoom: { wheel: { enabled: true, speed: 0.1 }, pinch: { enabled: true, speed: 0.1 }, mode: 'x' },
+                                limits: { x: { min: 'original', max: 'original' } }
+                            }
+                        },
+                        animation: {
+                            duration: 1000,
+                            easing: 'easeInOutQuart',
+                            onComplete: function() {
+                                document.getElementById('stockChart').style.opacity = '1';
+                            }
+                        },
+                        animations: {
+                            tension: { duration: 1000, easing: 'easeInOutCubic', from: 0.3, to: 0.4, loop: false },
+                            y: {
+                                duration: 1200,
+                                from: function(ctx) {
+                                    if (ctx.type === 'data') return ctx.chart.scales.y.getPixelForValue(0);
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                grid: { display: true, color: 'rgba(156, 163, 175, 0.1)', drawBorder: false, drawTicks: false },
+                                border: { display: false },
+                                title: { display: false },
+                                ticks: {
+                                    maxTicksLimit: window.innerWidth < 768 ? 6 : 12,
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    color: '#6b7280',
+                                    font: { size: window.innerWidth < 768 ? 9 : 11, family: "'Inter', 'Segoe UI', 'Roboto', sans-serif" },
+                                    padding: 4
+                                }
+                            },
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                grid: { display: true, color: 'rgba(156, 163, 175, 0.15)', drawBorder: false, drawTicks: false },
+                                border: { display: false },
+                                title: { display: false },
+                                ticks: {
+                                    callback: function(value) { return '$' + value.toFixed(2); },
+                                    color: '#6b7280',
+                                    font: { size: window.innerWidth < 768 ? 9 : 11, family: "'Inter', 'Segoe UI', 'Roboto', sans-serif" },
+                                    padding: 4
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
         
-        // Create Volume Chart
+        createStockChart();
+        
+        // Build volume bar colors based on price direction
+        function getVolumeBarColors(dates, volumes, prices) {
+            return volumes.map((v, i) => {
+                if (i === 0) return 'rgba(99, 102, 241, 0.6)';
+                const curr = prices[i];
+                const prev = prices[i - 1];
+                return curr >= prev ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)';
+            });
+        }
+        
+        // Create Volume Chart (bar chart)
         const volumeCtx = document.getElementById('volumeChart').getContext('2d');
         const volumeChart = new Chart(volumeCtx, {
-            type: 'line',
+            type: 'bar',
             data: {
                 labels: chartData.dates,
                 datasets: [
                     {
                         label: '📊 Volume',
                         data: chartData.volumes,
+                        backgroundColor: getVolumeBarColors(chartData.dates, chartData.volumes, chartData.prices),
                         borderColor: function(context) {
                             const index = context.dataIndex;
                             if (index === 0) return 'rgba(99, 102, 241, 0.8)';
@@ -1748,27 +1894,9 @@ document.addEventListener('DOMContentLoaded', function() {
                             const previousPrice = chartData.prices[index - 1];
                             return currentPrice >= previousPrice ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
                         },
-                        backgroundColor: function(context) {
-                            const index = context.dataIndex;
-                            if (index === 0) return 'rgba(99, 102, 241, 0.2)';
-                            const currentPrice = chartData.prices[index];
-                            const previousPrice = chartData.prices[index - 1];
-                            return currentPrice >= previousPrice ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
-                        },
-                        borderWidth: 1.5,
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        pointHoverRadius: 0,
-                        segment: {
-                            borderColor: function(ctx) {
-                                const index = ctx.p1DataIndex;
-                                if (index === 0) return 'rgba(99, 102, 241, 0.8)';
-                                const currentPrice = chartData.prices[index];
-                                const previousPrice = chartData.prices[index - 1];
-                                return currentPrice >= previousPrice ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)';
-                            }
-                        }
+                        borderWidth: 1,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.9
                     }
                 ]
             },
@@ -1952,33 +2080,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // Helper function to update chart colors based on price direction
-        function updateChartColors() {
-            const prices = stockChart.data.datasets[0].data;
-            if (prices.length === 0) return;
-            
-            const startPrice = prices[0];
-            const endPrice = prices[prices.length - 1];
-            const isUp = endPrice >= startPrice;
-            const priceColor = isUp ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)';
-            
-            // Create new gradient
-            const newGradient = ctx.createLinearGradient(0, 0, 0, 450);
-            if (isUp) {
-                newGradient.addColorStop(0, 'rgba(16, 185, 129, 0.3)');
-                newGradient.addColorStop(0.5, 'rgba(16, 185, 129, 0.15)');
-                newGradient.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
-            } else {
-                newGradient.addColorStop(0, 'rgba(239, 68, 68, 0.3)');
-                newGradient.addColorStop(0.5, 'rgba(239, 68, 68, 0.15)');
-                newGradient.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
-            }
-            
-            stockChart.data.datasets[0].borderColor = priceColor;
-            stockChart.data.datasets[0].backgroundColor = newGradient;
-            stockChart.data.datasets[0].pointHoverBackgroundColor = priceColor;
-        }
-        
         // Reset Zoom button
         document.getElementById('resetZoom').addEventListener('click', function() {
             stockChart.resetZoom();
@@ -1996,18 +2097,18 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // Filter data by date range
-            const filteredIndices = [];
             const filteredDates = [];
             const filteredPrices = [];
+            const filteredOpens = [];
             const filteredHighs = [];
             const filteredLows = [];
             const filteredVolumes = [];
             
             originalData.dates.forEach((date, index) => {
                 if (date >= startDate && date <= endDate) {
-                    filteredIndices.push(index);
                     filteredDates.push(date);
                     filteredPrices.push(originalData.prices[index]);
+                    filteredOpens.push(originalData.opens[index]);
                     filteredHighs.push(originalData.highs[index]);
                     filteredLows.push(originalData.lows[index]);
                     filteredVolumes.push(originalData.volumes[index]);
@@ -2019,41 +2120,43 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Update chart data
-            stockChart.data.labels = filteredDates;
-            stockChart.data.datasets[0].data = filteredPrices;
-            stockChart.data.datasets[1].data = filteredHighs;
-            stockChart.data.datasets[2].data = filteredLows;
+            currentFilteredData = {
+                dates: filteredDates,
+                prices: filteredPrices,
+                opens: filteredOpens,
+                highs: filteredHighs,
+                lows: filteredLows,
+                volumes: filteredVolumes
+            };
             
+            createStockChart();
             volumeChart.data.labels = filteredDates;
             volumeChart.data.datasets[0].data = filteredVolumes;
-            
-            updateChartColors();
-            stockChart.resetZoom();
+            volumeChart.data.datasets[0].backgroundColor = getVolumeBarColors(filteredDates, filteredVolumes, filteredPrices);
             volumeChart.resetZoom();
-            stockChart.update();
             volumeChart.update();
         });
         
         // Reset Date Filter button
         document.getElementById('resetDateFilter').addEventListener('click', function() {
-            // Restore original data
-            stockChart.data.labels = originalData.dates;
-            stockChart.data.datasets[0].data = originalData.prices;
-            stockChart.data.datasets[1].data = originalData.highs;
-            stockChart.data.datasets[2].data = originalData.lows;
+            currentFilteredData = {
+                dates: [...originalData.dates],
+                prices: [...originalData.prices],
+                opens: [...originalData.opens],
+                highs: [...originalData.highs],
+                lows: [...originalData.lows],
+                volumes: [...originalData.volumes]
+            };
             
+            createStockChart();
             volumeChart.data.labels = originalData.dates;
             volumeChart.data.datasets[0].data = originalData.volumes;
+            volumeChart.data.datasets[0].backgroundColor = getVolumeBarColors(originalData.dates, originalData.volumes, originalData.prices);
             
-            // Reset date inputs
             startDateInput.value = originalData.dates[0];
             endDateInput.value = originalData.dates[originalData.dates.length - 1];
             
-            updateChartColors();
-            stockChart.resetZoom();
             volumeChart.resetZoom();
-            stockChart.update();
             volumeChart.update();
         });
         
@@ -2095,15 +2198,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 let startDate;
                 
                 if (period === 'all') {
-                    // Show all data
-                    stockChart.data.labels = originalData.dates;
-                    stockChart.data.datasets[0].data = originalData.prices;
-                    stockChart.data.datasets[1].data = originalData.highs;
-                    stockChart.data.datasets[2].data = originalData.lows;
-                    
+                    currentFilteredData = {
+                        dates: [...originalData.dates],
+                        prices: [...originalData.prices],
+                        opens: [...originalData.opens],
+                        highs: [...originalData.highs],
+                        lows: [...originalData.lows],
+                        volumes: [...originalData.volumes]
+                    };
+                    createStockChart();
                     volumeChart.data.labels = originalData.dates;
                     volumeChart.data.datasets[0].data = originalData.volumes;
-                    
+                    volumeChart.data.datasets[0].backgroundColor = getVolumeBarColors(originalData.dates, originalData.volumes, originalData.prices);
                     startDateInput.value = originalData.dates[0];
                     endDateInput.value = endDate;
                 } else {
@@ -2149,6 +2255,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Filter data by calculated date range
                     const filteredDates = [];
                     const filteredPrices = [];
+                    const filteredOpens = [];
                     const filteredHighs = [];
                     const filteredLows = [];
                     const filteredVolumes = [];
@@ -2157,6 +2264,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (date >= startDate && date <= endDate) {
                             filteredDates.push(date);
                             filteredPrices.push(originalData.prices[index]);
+                            filteredOpens.push(originalData.opens[index]);
                             filteredHighs.push(originalData.highs[index]);
                             filteredLows.push(originalData.lows[index]);
                             filteredVolumes.push(originalData.volumes[index]);
@@ -2164,15 +2272,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     });
                     
                     if (filteredDates.length > 0) {
-                        stockChart.data.labels = filteredDates;
-                        stockChart.data.datasets[0].data = filteredPrices;
-                        stockChart.data.datasets[1].data = filteredHighs;
-                        stockChart.data.datasets[2].data = filteredLows;
-                        
+                        currentFilteredData = {
+                            dates: filteredDates,
+                            prices: filteredPrices,
+                            opens: filteredOpens,
+                            highs: filteredHighs,
+                            lows: filteredLows,
+                            volumes: filteredVolumes
+                        };
+                        createStockChart();
                         volumeChart.data.labels = filteredDates;
                         volumeChart.data.datasets[0].data = filteredVolumes;
-                        
-                        // Update date inputs
+                        volumeChart.data.datasets[0].backgroundColor = getVolumeBarColors(filteredDates, filteredVolumes, filteredPrices);
                         startDateInput.value = filteredDates[0];
                         endDateInput.value = filteredDates[filteredDates.length - 1];
                     } else {
@@ -2196,11 +2307,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
                 
-                updateChartColors();
-                stockChart.resetZoom();
                 volumeChart.resetZoom();
-                stockChart.update('active');
                 volumeChart.update('active');
+            });
+        });
+        
+        // Chart type toggle (Line / Candles)
+        document.querySelectorAll('.chart-type-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.chart-type-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                priceChartType = this.dataset.type;
+                createStockChart();
             });
         });
     }

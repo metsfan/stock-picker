@@ -349,6 +349,7 @@ def stock_detail_view(request, symbol):
     chart_data = {
         'dates': [p.date.strftime('%Y-%m-%d') for p in price_data],
         'prices': [float(p.close) if p.close else None for p in price_data],
+        'opens': [float(p.open) if p.open is not None else (float(p.close) if p.close else None) for p in price_data],
         'volumes': [int(p.volume) if p.volume else 0 for p in price_data],
         'highs': [float(p.high) if p.high else None for p in price_data],
         'lows': [float(p.low) if p.low else None for p in price_data],
