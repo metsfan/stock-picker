@@ -38,6 +38,9 @@
                         <a href="?filter=stage2_vcp&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'stage2_vcp' %}dark{% else %}outline-dark{% endif %}">
                             Best Setups ({{ stage2_vcp_count }})
                         </a>
+                        <a href="?filter=macd_bullish&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'macd_bullish' %}info{% else %}outline-info{% endif %}">
+                            MACD Bullish ({{ macd_bullish_count }})
+                        </a>
                     </div>
                     
                     <div class="btn-group me-2" role="group">

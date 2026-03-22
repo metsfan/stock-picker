@@ -117,6 +117,12 @@ class MinerviniMetrics(models.Model):
     risk_reward_ratio = models.DecimalField(max_digits=5, decimal_places=1, null=True)
     risk_percent = models.DecimalField(max_digits=5, decimal_places=1, null=True)
     
+    # MACD indicator (fetched from Massive API)
+    macd_daily_value = models.DecimalField(max_digits=12, decimal_places=4, null=True)
+    macd_daily_signal = models.DecimalField(max_digits=12, decimal_places=4, null=True)
+    macd_weekly_value = models.DecimalField(max_digits=12, decimal_places=4, null=True)
+    macd_weekly_signal = models.DecimalField(max_digits=12, decimal_places=4, null=True)
+    
     # Holder signal system (Hold/Sell) for existing stockholders
     holder_signal = models.CharField(max_length=10, null=True, blank=True)
     holder_signal_reasons = models.TextField(null=True, blank=True)
@@ -337,6 +343,18 @@ class MinerviniMetrics(models.Model):
         if self.holder_stop_trailing and self.close_price:
             return float((self.holder_stop_trailing - self.close_price) / self.close_price * 100)
         return None
+    
+    @property
+    def macd_bullish(self):
+        """MACD is above zero and above signal on both daily and weekly timeframes"""
+        vals = [self.macd_daily_value, self.macd_daily_signal,
+                self.macd_weekly_value, self.macd_weekly_signal]
+        if any(v is None for v in vals):
+            return False
+        return (float(self.macd_daily_value) > 0
+                and float(self.macd_daily_value) > float(self.macd_daily_signal)
+                and float(self.macd_weekly_value) > 0
+                and float(self.macd_weekly_value) > float(self.macd_weekly_signal))
     
     @property
     def primary_base_status_display(self):

@@ -65,6 +65,7 @@ run_step 3 "Fetch Historical Earnings" "fetch_earnings.py"
 run_step 4 "Fetch Upcoming Earnings" "fetch_upcoming_earnings.py"
 run_step 5 "Fetch Income Statements" "fetch_income_statements.py"
 run_step 6 "Run Minervini Analysis" "minervini.py"
+run_step 7 "Fetch MACD Indicators" "fetch_macd.py"
 
 # Success
 echo ""

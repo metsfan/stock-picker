@@ -458,3 +458,13 @@ ALTER TABLE sector_performance ADD COLUMN IF NOT EXISTS vcp_count INTEGER DEFAUL
 
 -- Index for sorting sectors by market cap
 CREATE INDEX IF NOT EXISTS idx_sector_perf_market_cap ON sector_performance(date, sector_market_cap DESC NULLS LAST);
+
+-- ============================================================================
+-- MACD indicator columns (fetched from Massive API)
+-- Daily and weekly MACD values for momentum confirmation.
+-- ============================================================================
+
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_daily_value NUMERIC;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_daily_signal NUMERIC;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_weekly_value NUMERIC;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_weekly_signal NUMERIC;

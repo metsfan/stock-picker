@@ -113,6 +113,24 @@ echo.
 echo [OK] Step 5 completed successfully
 echo.
 
+REM Step 6: Fetch MACD Indicators
+echo.
+echo ========================================
+echo Step 6: Fetch MACD Indicators
+echo ========================================
+echo Running: python fetch_macd.py
+echo.
+python fetch_macd.py
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Step 6 FAILED
+    echo Pipeline aborted.
+    exit /b 1
+)
+echo.
+echo [OK] Step 6 completed successfully
+echo.
+
 REM Success
 echo.
 echo ========================================

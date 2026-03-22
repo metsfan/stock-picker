@@ -1,4 +1,5 @@
 from django.shortcuts import render, get_object_or_404
+from django.db import models as db_models
 from django.views.generic import ListView, DetailView
 from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
@@ -71,6 +72,14 @@ class StockListView(SingleTableMixin, ListView):
             queryset = queryset.filter(stage=2)
         elif filter_type == 'stage2_vcp':
             queryset = queryset.filter(stage=2, vcp_detected=True, passes_minervini=True)
+        elif filter_type == 'macd_bullish':
+            queryset = queryset.filter(
+                passes_minervini=True,
+                macd_daily_value__gt=0,
+                macd_daily_value__gt=db_models.F('macd_daily_signal'),
+                macd_weekly_value__gt=0,
+                macd_weekly_value__gt=db_models.F('macd_weekly_signal'),
+            )
         
         # Apply upcoming earnings filter
         earnings_filter = self.request.GET.get('earnings', '')
@@ -134,6 +143,13 @@ class StockListView(SingleTableMixin, ListView):
             context['stage2_count'] = all_stocks.filter(stage=2).count()
             context['stage2_vcp_count'] = all_stocks.filter(
                 stage=2, vcp_detected=True, passes_minervini=True
+            ).count()
+            context['macd_bullish_count'] = all_stocks.filter(
+                passes_minervini=True,
+                macd_daily_value__gt=0,
+                macd_daily_value__gt=db_models.F('macd_daily_signal'),
+                macd_weekly_value__gt=0,
+                macd_weekly_value__gt=db_models.F('macd_weekly_signal'),
             ).count()
             context['upcoming_earnings_count'] = all_stocks.filter(has_upcoming_earnings=True).count()
             context['new_issue_count'] = all_stocks.filter(is_new_issue=True).count()

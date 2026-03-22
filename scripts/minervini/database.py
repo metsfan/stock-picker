@@ -103,12 +103,13 @@ class DatabaseManager:
              holder_stop_initial, holder_stop_trailing, holder_trailing_method,
              cup_detected, cup_depth_pct, cup_duration_weeks,
              handle_detected, handle_depth_pct, handle_duration_weeks,
-             handle_has_vcp, pattern_type)
+             handle_has_vcp, pattern_type,
+             macd_daily_value, macd_daily_signal, macd_weekly_value, macd_weekly_signal)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -186,7 +187,11 @@ class DatabaseManager:
                 handle_depth_pct = EXCLUDED.handle_depth_pct,
                 handle_duration_weeks = EXCLUDED.handle_duration_weeks,
                 handle_has_vcp = EXCLUDED.handle_has_vcp,
-                pattern_type = EXCLUDED.pattern_type
+                pattern_type = EXCLUDED.pattern_type,
+                macd_daily_value = EXCLUDED.macd_daily_value,
+                macd_daily_signal = EXCLUDED.macd_daily_signal,
+                macd_weekly_value = EXCLUDED.macd_weekly_value,
+                macd_weekly_signal = EXCLUDED.macd_weekly_signal
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -265,7 +270,11 @@ class DatabaseManager:
             metrics['handle_depth_pct'],
             metrics['handle_duration_weeks'],
             metrics['handle_has_vcp'],
-            metrics['pattern_type']
+            metrics['pattern_type'],
+            metrics.get('macd_daily_value'),
+            metrics.get('macd_daily_signal'),
+            metrics.get('macd_weekly_value'),
+            metrics.get('macd_weekly_signal'),
         ))
 
         self.conn.commit()
@@ -341,12 +350,13 @@ class DatabaseManager:
                      holder_stop_initial, holder_stop_trailing, holder_trailing_method,
                      cup_detected, cup_depth_pct, cup_duration_weeks,
                      handle_detected, handle_depth_pct, handle_duration_weeks,
-                     handle_has_vcp, pattern_type)
+                     handle_has_vcp, pattern_type,
+                     macd_daily_value, macd_daily_signal, macd_weekly_value, macd_weekly_signal)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (symbol, date)
                     DO UPDATE SET
                         close_price = EXCLUDED.close_price,
@@ -424,7 +434,11 @@ class DatabaseManager:
                         handle_depth_pct = EXCLUDED.handle_depth_pct,
                         handle_duration_weeks = EXCLUDED.handle_duration_weeks,
                         handle_has_vcp = EXCLUDED.handle_has_vcp,
-                        pattern_type = EXCLUDED.pattern_type
+                        pattern_type = EXCLUDED.pattern_type,
+                        macd_daily_value = EXCLUDED.macd_daily_value,
+                        macd_daily_signal = EXCLUDED.macd_daily_signal,
+                        macd_weekly_value = EXCLUDED.macd_weekly_value,
+                        macd_weekly_signal = EXCLUDED.macd_weekly_signal
                 """, (
                     metrics['symbol'],
                     metrics['date'],
@@ -503,7 +517,11 @@ class DatabaseManager:
                     metrics['handle_depth_pct'],
                     metrics['handle_duration_weeks'],
                     metrics['handle_has_vcp'],
-                    metrics['pattern_type']
+                    metrics['pattern_type'],
+                    metrics.get('macd_daily_value'),
+                    metrics.get('macd_daily_signal'),
+                    metrics.get('macd_weekly_value'),
+                    metrics.get('macd_weekly_signal'),
                 ))
 
             self.conn.commit()

@@ -383,6 +383,11 @@ class MinerviniAnalyzer:
             'primary_base_correction_pct': primary_base_data['primary_base_correction_pct'],
             'primary_base_status': primary_base_data['primary_base_status'],
             'days_since_ipo': primary_base_data['days_since_ipo'],
+            # MACD (populated by fetch_macd.py after analysis)
+            'macd_daily_value': None,
+            'macd_daily_signal': None,
+            'macd_weekly_value': None,
+            'macd_weekly_signal': None,
             # Ticker context (for logging/debugging)
             '_market_cap_tier': market_cap_tier,
             '_liquidity_score': liquidity_score,
