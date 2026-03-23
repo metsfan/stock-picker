@@ -335,6 +335,7 @@ class MinerviniAnalyzer:
             # VCP metrics
             'vcp_detected': vcp_data['vcp_detected'],
             'vcp_score': vcp_data['vcp_score'],
+            'vcp_breakout_confirmed': vcp_data.get('vcp_breakout_confirmed', False),
             'contraction_count': vcp_data['contraction_count'],
             'latest_contraction_pct': vcp_data['latest_contraction_pct'],
             'volume_contraction': vcp_data['volume_contraction'],

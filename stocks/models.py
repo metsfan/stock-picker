@@ -48,6 +48,7 @@ class MinerviniMetrics(models.Model):
     # VCP fields
     vcp_detected = models.BooleanField(default=False)
     vcp_score = models.DecimalField(max_digits=5, decimal_places=2, null=True)
+    vcp_breakout_confirmed = models.BooleanField(default=False)
     contraction_count = models.IntegerField(null=True)
     latest_contraction_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True)
     volume_contraction = models.BooleanField(default=False)

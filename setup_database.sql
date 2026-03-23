@@ -468,3 +468,9 @@ ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_daily_value NUMERIC;
 ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_daily_signal NUMERIC;
 ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_weekly_value NUMERIC;
 ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_weekly_signal NUMERIC;
+
+-- ============================================================================
+-- VCP breakout confirmation (price broke pivot on >= 1.5x avg volume)
+-- ============================================================================
+
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS vcp_breakout_confirmed BOOLEAN DEFAULT FALSE;

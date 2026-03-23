@@ -283,6 +283,7 @@ class SignalGenerator:
         rs = metrics.get('relative_strength')
         vcp = metrics.get('vcp_detected', False)
         vcp_score = metrics.get('vcp_score', 0) or 0
+        breakout_confirmed = metrics.get('vcp_breakout_confirmed', False)
         vol_ratio = metrics.get('volume_ratio')
         passes = metrics['passes_minervini']
         criteria_count = metrics['criteria_passed']
@@ -331,6 +332,8 @@ class SignalGenerator:
             reasons.append('All 9 trend criteria pass')
             reasons.append('Stage 2 uptrend confirmed')
             reasons.append(f'VCP pattern (score {vcp_score:.0f})')
+            if breakout_confirmed:
+                reasons.append('Breakout confirmed on above-avg volume')
             if vol_ratio and vol_ratio >= 1.5:
                 reasons.append(f'Above-avg volume ({vol_ratio:.1f}x)')
             if metrics.get('earnings_acceleration'):
@@ -349,6 +352,8 @@ class SignalGenerator:
 
             if vcp and vcp_score >= 50:
                 reasons.append(f'VCP confirmed (score {vcp_score:.0f})')
+                if breakout_confirmed:
+                    reasons.append('Breakout confirmed -- monitor for entry')
             elif vcp_score and 30 <= vcp_score < 50:
                 reasons.append(f'VCP forming (score {vcp_score:.0f})')
             elif not vcp:
@@ -359,6 +364,8 @@ class SignalGenerator:
                     reasons.append(f'Price {abs(distance_from_pivot):.1f}% below pivot -- wait for breakout')
                 elif distance_from_pivot > 5:
                     reasons.append(f'Extended {distance_from_pivot:.1f}% above pivot -- wait for pullback')
+                elif -2 <= distance_from_pivot < 0 and not breakout_confirmed:
+                    reasons.append('Approaching pivot -- no volume breakout yet')
 
             if upcoming_earnings and days_until is not None and days_until <= 14:
                 reasons.append(f'Earnings in {days_until} days -- wait')

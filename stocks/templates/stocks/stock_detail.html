@@ -850,6 +850,16 @@
                                 <td class="text-end"><strong>${{ metrics.pivot_price|floatformat:2 }}</strong></td>
                             </tr>
                             {% endif %}
+                            <tr>
+                                <td><strong>Breakout Confirmed:</strong></td>
+                                <td class="text-end">
+                                    {% if metrics.vcp_breakout_confirmed %}
+                                        <span class="badge bg-success">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
                             {% endif %}
                         </table>
                     </div>

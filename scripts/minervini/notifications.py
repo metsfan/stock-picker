@@ -254,6 +254,25 @@ class NotificationManager:
                 },
             })
 
+        # --- VCP breakout confirmation flip ---
+        new_bo = new.get('vcp_breakout_confirmed', False)
+        prev_bo = prev.get('vcp_breakout_confirmed', False)
+        if new_bo and not prev_bo:
+            vcp_sc = new.get('vcp_score') or 0
+            self._pending.append({
+                'symbol': symbol,
+                'date': date,
+                'notification_type': 'METRIC_CHANGE',
+                'title': f"{symbol} VCP breakout confirmed",
+                'message': f"VCP breakout confirmed on above-average volume (score: {vcp_sc:.0f})",
+                'metadata': {
+                    'metric': 'vcp_breakout_confirmed',
+                    'old_value': False,
+                    'new_value': True,
+                    'vcp_score': float(vcp_sc),
+                },
+            })
+
         # --- Relative strength change ---
         new_rs = new.get('relative_strength')
         prev_rs = prev.get('relative_strength')

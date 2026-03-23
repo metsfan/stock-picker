@@ -18,7 +18,7 @@ class StockTable(tables.Table):
     sell_target_primary = tables.Column(verbose_name='Target')
     risk_reward_ratio = tables.Column(verbose_name='R:R')
     risk_percent = tables.Column(verbose_name='Risk%')
-    vcp_detected = tables.BooleanColumn(verbose_name='VCP', yesno='✓,')
+    vcp_detected = tables.Column(verbose_name='VCP', orderable=True)
     vcp_score = tables.Column(verbose_name='VCP Score')
     pivot_price = tables.Column(verbose_name='Pivot')
     industry_rs = tables.Column(verbose_name='Ind RS')
@@ -149,6 +149,15 @@ class StockTable(tables.Table):
             return mark_safe(f'<span class="text-{color}">{risk:.1f}%</span>')
         return mark_safe('<span class="text-muted">-</span>')
     
+    def render_vcp_detected(self, value, record):
+        if getattr(record, 'vcp_breakout_confirmed', False):
+            return mark_safe(
+                '<span class="badge bg-success" title="Breakout confirmed">BO</span>'
+            )
+        if value:
+            return mark_safe('<span class="text-success">✓</span>')
+        return mark_safe('<span class="text-muted">-</span>')
+
     def render_pivot_price(self, value):
         if value is not None:
             return f'${value:,.2f}'

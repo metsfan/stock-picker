@@ -82,7 +82,8 @@ class DatabaseManager:
              week_52_high, week_52_low, percent_from_52w_high, percent_from_52w_low,
              ma_150_trend_20d, ma_200_trend_20d, relative_strength, stage, passes_minervini,
              criteria_passed, criteria_failed,
-             vcp_detected, vcp_score, contraction_count, latest_contraction_pct,
+             vcp_detected, vcp_score, vcp_breakout_confirmed,
+             contraction_count, latest_contraction_pct,
              volume_contraction, pivot_price, last_contraction_low,
              ema_10, ema_21, swing_low,
              avg_dollar_volume, volume_ratio,
@@ -109,7 +110,7 @@ class DatabaseManager:
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -129,6 +130,7 @@ class DatabaseManager:
                 criteria_failed = EXCLUDED.criteria_failed,
                 vcp_detected = EXCLUDED.vcp_detected,
                 vcp_score = EXCLUDED.vcp_score,
+                vcp_breakout_confirmed = EXCLUDED.vcp_breakout_confirmed,
                 contraction_count = EXCLUDED.contraction_count,
                 latest_contraction_pct = EXCLUDED.latest_contraction_pct,
                 volume_contraction = EXCLUDED.volume_contraction,
@@ -212,6 +214,7 @@ class DatabaseManager:
             metrics['criteria_failed'],
             metrics['vcp_detected'],
             metrics['vcp_score'],
+            metrics.get('vcp_breakout_confirmed', False),
             metrics['contraction_count'],
             metrics['latest_contraction_pct'],
             metrics['volume_contraction'],
@@ -329,7 +332,8 @@ class DatabaseManager:
                      week_52_high, week_52_low, percent_from_52w_high, percent_from_52w_low,
                      ma_150_trend_20d, ma_200_trend_20d, relative_strength, stage, passes_minervini,
                      criteria_passed, criteria_failed,
-                     vcp_detected, vcp_score, contraction_count, latest_contraction_pct,
+                     vcp_detected, vcp_score, vcp_breakout_confirmed,
+                     contraction_count, latest_contraction_pct,
                      volume_contraction, pivot_price, last_contraction_low,
                      ema_10, ema_21, swing_low,
                      avg_dollar_volume, volume_ratio,
@@ -356,7 +360,7 @@ class DatabaseManager:
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (symbol, date)
                     DO UPDATE SET
                         close_price = EXCLUDED.close_price,
@@ -376,6 +380,7 @@ class DatabaseManager:
                         criteria_failed = EXCLUDED.criteria_failed,
                         vcp_detected = EXCLUDED.vcp_detected,
                         vcp_score = EXCLUDED.vcp_score,
+                        vcp_breakout_confirmed = EXCLUDED.vcp_breakout_confirmed,
                         contraction_count = EXCLUDED.contraction_count,
                         latest_contraction_pct = EXCLUDED.latest_contraction_pct,
                         volume_contraction = EXCLUDED.volume_contraction,
@@ -459,6 +464,7 @@ class DatabaseManager:
                     metrics['criteria_failed'],
                     metrics['vcp_detected'],
                     metrics['vcp_score'],
+                    metrics.get('vcp_breakout_confirmed', False),
                     metrics['contraction_count'],
                     metrics['latest_contraction_pct'],
                     metrics['volume_contraction'],
@@ -555,7 +561,8 @@ class DatabaseManager:
             SELECT symbol, date, signal, stage, relative_strength,
                    vcp_detected, vcp_score, passes_minervini, passes_earnings,
                    criteria_passed, close_price, entry_low, entry_high,
-                   stop_loss, sell_target_primary, signal_reasons
+                   stop_loss, sell_target_primary, signal_reasons,
+                   vcp_breakout_confirmed, holder_signal
             FROM minervini_metrics
             WHERE symbol = %s AND date < %s
             ORDER BY date DESC
@@ -585,6 +592,8 @@ class DatabaseManager:
             'stop_loss': row[13],
             'sell_target_primary': row[14],
             'signal_reasons': row[15],
+            'vcp_breakout_confirmed': row[16],
+            'holder_signal': row[17],
         }
 
     # ------------------------------------------------------------------
