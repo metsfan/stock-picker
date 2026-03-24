@@ -208,10 +208,117 @@ def process_batch(tickers_batch, from_date, metrics_date, db_pool):
     return stats
 
 
+def diagnose(ticker='AAPL'):
+    """Run a full diagnostic on the MACD pipeline for a single ticker."""
+    print("=" * 80)
+    print(f"MACD DIAGNOSTIC for {ticker}")
+    print("=" * 80)
+
+    conn = get_db_connection()
+    metrics_date = get_latest_metrics_date(conn)
+    if not metrics_date:
+        print("FAIL: No minervini_metrics rows found.")
+        return
+    print(f"\n1. Metrics date: {metrics_date}")
+
+    from_date = (metrics_date - timedelta(days=LOOKBACK_DAYS)).strftime('%Y-%m-%d')
+    print(f"   Lookback from: {from_date}")
+
+    # Check if row exists
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT macd_daily_value, macd_daily_signal, macd_weekly_value, macd_weekly_signal "
+        "FROM minervini_metrics WHERE symbol = %s AND date = %s",
+        (ticker, metrics_date)
+    )
+    row = cursor.fetchone()
+    print(f"\n2. Database row for {ticker} on {metrics_date}:")
+    if row:
+        print(f"   macd_daily_value  = {row[0]}")
+        print(f"   macd_daily_signal = {row[1]}")
+        print(f"   macd_weekly_value = {row[2]}")
+        print(f"   macd_weekly_signal= {row[3]}")
+        all_null = all(v is None for v in row)
+        if all_null:
+            print("   WARNING: All MACD columns are NULL")
+    else:
+        print(f"   WARNING: No minervini_metrics row found for {ticker} on {metrics_date}")
+
+    # Count overall MACD population
+    cursor.execute(
+        "SELECT COUNT(*) FROM minervini_metrics WHERE date = %s AND macd_daily_value IS NOT NULL",
+        (metrics_date,)
+    )
+    populated = cursor.fetchone()[0]
+    cursor.execute(
+        "SELECT COUNT(*) FROM minervini_metrics WHERE date = %s",
+        (metrics_date,)
+    )
+    total = cursor.fetchone()[0]
+    print(f"\n3. MACD population: {populated}/{total} rows have non-NULL macd_daily_value")
+
+    # Count bullish
+    cursor.execute("""
+        SELECT COUNT(*) FROM minervini_metrics
+        WHERE date = %s
+          AND macd_daily_value > 0
+          AND macd_daily_value > macd_daily_signal
+          AND macd_weekly_value > 0
+          AND macd_weekly_value > macd_weekly_signal
+    """, (metrics_date,))
+    bullish = cursor.fetchone()[0]
+    print(f"   Bullish MACD (both timeframes): {bullish}")
+
+    cursor.close()
+    conn.close()
+
+    # Test API
+    print(f"\n4. Testing API for {ticker}...")
+    for ts in ('day', 'week'):
+        url = f"{API_BASE_URL}/{ticker}"
+        params = {
+            'timespan': ts,
+            'timestamp.gte': from_date,
+            'order': 'desc',
+            'limit': 1,
+            'adjusted': 'true',
+            'series_type': 'close',
+            'short_window': 12,
+            'long_window': 26,
+            'signal_window': 9,
+            'apiKey': API_KEY
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=30)
+            print(f"\n   [{ts}] HTTP {resp.status_code}")
+            data = resp.json()
+            print(f"   Status: {data.get('status')}")
+            print(f"   Request ID: {data.get('request_id', 'N/A')}")
+            values = data.get('results', {}).get('values', [])
+            if values:
+                latest = values[0]
+                print(f"   Latest entry keys: {list(latest.keys())}")
+                print(f"   value  = {latest.get('value')}")
+                print(f"   signal = {latest.get('signal')}")
+            else:
+                print(f"   WARNING: No values returned")
+                print(f"   Full results: {data.get('results', {})}")
+        except Exception as e:
+            print(f"   ERROR: {e}")
+
+    print("\n" + "=" * 80)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Fetch MACD indicator data')
     parser.add_argument('--ticker', type=str, help='Fetch single ticker only')
+    parser.add_argument('--diagnose', type=str, nargs='?', const='AAPL',
+                        help='Run diagnostic for a ticker (default: AAPL)')
     args = parser.parse_args()
+
+    if args.diagnose:
+        diagnose(args.diagnose.upper())
+        return
 
     print("=" * 80)
     print("MACD Indicator Fetcher")

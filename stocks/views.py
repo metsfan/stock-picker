@@ -78,7 +78,6 @@ class StockListView(SingleTableMixin, ListView):
                 db_models.Q(macd_daily_value__gt=db_models.F('macd_daily_signal')),
                 db_models.Q(macd_weekly_value__gt=0),
                 db_models.Q(macd_weekly_value__gt=db_models.F('macd_weekly_signal')),
-                passes_minervini=True,
             )
         
         # Apply upcoming earnings filter
@@ -149,7 +148,6 @@ class StockListView(SingleTableMixin, ListView):
                 db_models.Q(macd_daily_value__gt=db_models.F('macd_daily_signal')),
                 db_models.Q(macd_weekly_value__gt=0),
                 db_models.Q(macd_weekly_value__gt=db_models.F('macd_weekly_signal')),
-                passes_minervini=True,
             ).count()
             context['upcoming_earnings_count'] = all_stocks.filter(has_upcoming_earnings=True).count()
             context['new_issue_count'] = all_stocks.filter(is_new_issue=True).count()
