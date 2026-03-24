@@ -190,10 +190,10 @@ class DatabaseManager:
                 handle_duration_weeks = EXCLUDED.handle_duration_weeks,
                 handle_has_vcp = EXCLUDED.handle_has_vcp,
                 pattern_type = EXCLUDED.pattern_type,
-                macd_daily_value = EXCLUDED.macd_daily_value,
-                macd_daily_signal = EXCLUDED.macd_daily_signal,
-                macd_weekly_value = EXCLUDED.macd_weekly_value,
-                macd_weekly_signal = EXCLUDED.macd_weekly_signal
+                macd_daily_value = COALESCE(EXCLUDED.macd_daily_value, minervini_metrics.macd_daily_value),
+                macd_daily_signal = COALESCE(EXCLUDED.macd_daily_signal, minervini_metrics.macd_daily_signal),
+                macd_weekly_value = COALESCE(EXCLUDED.macd_weekly_value, minervini_metrics.macd_weekly_value),
+                macd_weekly_signal = COALESCE(EXCLUDED.macd_weekly_signal, minervini_metrics.macd_weekly_signal)
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -440,10 +440,10 @@ class DatabaseManager:
                         handle_duration_weeks = EXCLUDED.handle_duration_weeks,
                         handle_has_vcp = EXCLUDED.handle_has_vcp,
                         pattern_type = EXCLUDED.pattern_type,
-                        macd_daily_value = EXCLUDED.macd_daily_value,
-                        macd_daily_signal = EXCLUDED.macd_daily_signal,
-                        macd_weekly_value = EXCLUDED.macd_weekly_value,
-                        macd_weekly_signal = EXCLUDED.macd_weekly_signal
+                        macd_daily_value = COALESCE(EXCLUDED.macd_daily_value, minervini_metrics.macd_daily_value),
+                        macd_daily_signal = COALESCE(EXCLUDED.macd_daily_signal, minervini_metrics.macd_daily_signal),
+                        macd_weekly_value = COALESCE(EXCLUDED.macd_weekly_value, minervini_metrics.macd_weekly_value),
+                        macd_weekly_signal = COALESCE(EXCLUDED.macd_weekly_signal, minervini_metrics.macd_weekly_signal)
                 """, (
                     metrics['symbol'],
                     metrics['date'],
