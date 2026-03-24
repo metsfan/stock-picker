@@ -74,11 +74,11 @@ class StockListView(SingleTableMixin, ListView):
             queryset = queryset.filter(stage=2, vcp_detected=True, passes_minervini=True)
         elif filter_type == 'macd_bullish':
             queryset = queryset.filter(
+                db_models.Q(macd_daily_value__gt=0),
+                db_models.Q(macd_daily_value__gt=db_models.F('macd_daily_signal')),
+                db_models.Q(macd_weekly_value__gt=0),
+                db_models.Q(macd_weekly_value__gt=db_models.F('macd_weekly_signal')),
                 passes_minervini=True,
-                macd_daily_value__gt=0,
-                macd_daily_value__gt=db_models.F('macd_daily_signal'),
-                macd_weekly_value__gt=0,
-                macd_weekly_value__gt=db_models.F('macd_weekly_signal'),
             )
         
         # Apply upcoming earnings filter
