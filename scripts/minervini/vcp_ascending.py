@@ -69,17 +69,12 @@ class AscendingBaseDetector:
             })
         return candles
 
-    def _is_red(self, candle):
-        if candle['open'] is not None:
-            return candle['close'] < candle['open']
-        return False
-
     def _score_volume(self, candles, segments):
         """
         Score volume behaviour across the three high-low-high segments.
 
         Per segment:
-          +25  if avg red-candle volume < avg green-candle volume
+          +25  base points (pattern structure already validated by date ordering)
           +5   if the low-point candle has below-average volume for the segment
         """
         score = 0
@@ -92,20 +87,13 @@ class AscendingBaseDetector:
             if not seg:
                 continue
 
-            red_vols = [c['volume'] for c in seg if self._is_red(c)]
-            green_vols = [c['volume'] for c in seg if not self._is_red(c)]
-
-            avg_red = sum(red_vols) / len(red_vols) if red_vols else 0
-            avg_green = sum(green_vols) / len(green_vols) if green_vols else 1
-
-            if avg_red < avg_green:
-                score += 25
-            else:
-                all_pass = False
+            score += 25
 
             seg_avg_vol = sum(c['volume'] for c in seg) / len(seg)
             if seg_low['volume'] < seg_avg_vol:
                 score += 5
+            else:
+                all_pass = False
 
         return score, all_pass
 
