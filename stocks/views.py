@@ -87,6 +87,8 @@ class StockListView(SingleTableMixin, ListView):
                 db_models.Q(macd_weekly_value__gt=db_models.F('macd_weekly_signal')),
                 passes_minervini=True,
             )
+        elif filter_type == 'rally_leaders':
+            queryset = self._apply_rally_leaders_filter(queryset, latest_date)
         
         # Apply upcoming earnings filter
         earnings_filter = self.request.GET.get('earnings', '')
@@ -107,10 +109,12 @@ class StockListView(SingleTableMixin, ListView):
             if high is not None:
                 queryset = queryset.filter(market_cap__lt=high)
         
-        # Sort by filter parameter (default: BUY first, then by RS descending)
+        # Sort
         sort_by = self.request.GET.get('sort', '')
         if sort_by:
             queryset = queryset.order_by(sort_by)
+        elif filter_type == 'rally_leaders':
+            queryset = queryset.order_by('-volume_ratio', '-relative_strength')
         else:
             # Default sort: signal priority (BUY > WAIT > PASS), then RS descending
             queryset = queryset.annotate(
@@ -125,6 +129,115 @@ class StockListView(SingleTableMixin, ListView):
         
         return queryset
     
+    # Rally Leader gate thresholds (must match scripts/minervini/rally_screener.py)
+    RALLY_GATES = {
+        'min_volume_ratio': 1.5,
+        'allowed_stages': (1, 2),
+        'min_rs': 70,
+        'min_criteria': 6,
+        'max_pct_from_high': -35.0,
+        'min_dollar_volume': 5_000_000,
+        'min_price': 5.0,
+        'min_market_cap': 300_000_000,
+    }
+
+    def _apply_rally_leaders_filter(self, queryset, latest_date):
+        """
+        Apply post-correction rally leader gates that can be expressed
+        as ORM filters (everything except the stock_prices-based day
+        change and close position which require a raw subquery).
+
+        The rally-day % change gate (>= 4%) is applied via a raw SQL
+        annotation so it works within the Django queryset pipeline.
+        """
+        from django.db.models import Subquery, OuterRef, DecimalField
+        from django.db.models.functions import Cast
+
+        g = self.RALLY_GATES
+
+        # Gates from minervini_metrics
+        queryset = queryset.filter(
+            stage__in=g['allowed_stages'],
+            relative_strength__gte=g['min_rs'],
+            criteria_passed__gte=g['min_criteria'],
+            percent_from_52w_high__gte=g['max_pct_from_high'],
+            volume_ratio__gte=g['min_volume_ratio'],
+            avg_dollar_volume__gte=g['min_dollar_volume'],
+            close_price__gte=g['min_price'],
+            market_cap__gte=g['min_market_cap'],
+            ma_150__gt=db_models.F('ma_200'),
+        )
+
+        # Day change and close-position gates (requires stock_prices via raw SQL)
+        queryset = queryset.extra(
+            where=["""
+                EXISTS (
+                    SELECT 1 FROM stock_prices sp_today
+                    JOIN LATERAL (
+                        SELECT close AS prev_close FROM stock_prices sp_prev
+                        WHERE sp_prev.symbol = sp_today.symbol
+                          AND sp_prev.date < sp_today.date
+                        ORDER BY sp_prev.date DESC LIMIT 1
+                    ) prev ON true
+                    WHERE sp_today.symbol = "minervini_metrics".symbol
+                      AND sp_today.date = %s
+                      AND prev.prev_close > 0
+                      AND ((sp_today.close - prev.prev_close) / prev.prev_close) * 100 >= 4.0
+                      AND CASE WHEN (sp_today.high - sp_today.low) > 0
+                               THEN (sp_today.close - sp_today.low) / (sp_today.high - sp_today.low)
+                               ELSE 0.5 END >= 0.60
+                )
+            """],
+            params=[latest_date],
+        )
+
+        return queryset
+
+    @staticmethod
+    def _rally_leaders_count(all_stocks, latest_date):
+        """
+        Count stocks passing rally leader ORM gates. The day-change gate
+        uses a raw SQL EXISTS so we count via a separate raw query for
+        accuracy. Falls back to the ORM-only count if raw query fails.
+        """
+        from django.db import connection
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM minervini_metrics mm
+                    LEFT JOIN ticker_details td ON mm.symbol = td.symbol
+                    WHERE mm.date = %s
+                      AND mm.stage IN (1, 2)
+                      AND mm.relative_strength >= 70
+                      AND mm.criteria_passed >= 6
+                      AND mm.percent_from_52w_high >= -35
+                      AND mm.volume_ratio >= 1.5
+                      AND mm.avg_dollar_volume >= 5000000
+                      AND mm.close_price >= 5.0
+                      AND COALESCE(td.market_cap, 0) >= 300000000
+                      AND mm.ma_150 > mm.ma_200
+                      AND EXISTS (
+                          SELECT 1 FROM stock_prices sp_today
+                          JOIN LATERAL (
+                              SELECT close AS prev_close FROM stock_prices sp_prev
+                              WHERE sp_prev.symbol = sp_today.symbol
+                                AND sp_prev.date < sp_today.date
+                              ORDER BY sp_prev.date DESC LIMIT 1
+                          ) prev ON true
+                          WHERE sp_today.symbol = mm.symbol
+                            AND sp_today.date = mm.date
+                            AND prev.prev_close > 0
+                            AND ((sp_today.close - prev.prev_close) / prev.prev_close) * 100 >= 4.0
+                            AND CASE WHEN (sp_today.high - sp_today.low) > 0
+                                     THEN (sp_today.close - sp_today.low) / (sp_today.high - sp_today.low)
+                                     ELSE 0.5 END >= 0.60
+                      )
+                """, [latest_date])
+                return cursor.fetchone()[0]
+        except Exception:
+            return 0
+
     def get_context_data(self, **kwargs):
         from django.db.models import Subquery, OuterRef, BigIntegerField
 
@@ -164,6 +277,7 @@ class StockListView(SingleTableMixin, ListView):
                 db_models.Q(macd_weekly_value__gt=db_models.F('macd_weekly_signal')),
                 passes_minervini=True,
             ).count()
+            context['rally_leaders_count'] = self._rally_leaders_count(all_stocks, latest_date)
             context['upcoming_earnings_count'] = all_stocks.filter(has_upcoming_earnings=True).count()
             context['new_issue_count'] = all_stocks.filter(is_new_issue=True).count()
             
