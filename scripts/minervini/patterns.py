@@ -154,7 +154,7 @@ class PatternDetector:
                             if sh_price > 0 else 0
                         )
                         duration = sl_idx - sh_idx
-                        if duration < 5:
+                        if duration < 5 or range_pct < 2.0:
                             i = j + 1
                             break
                         vol_slice = volumes[sh_idx:sl_idx + 1]
@@ -414,14 +414,13 @@ class PatternDetector:
         if len(vcp_highs) < 20:
             return _early_exit_with_cup()
 
-        # Find the highest close in the lookback window (left wall / peak).
-        # Using closes instead of highs filters one-bar intraday spikes.
-        max_high = max(vcp_closes)
-        max_high_local_idx = len(vcp_closes) - 1 - vcp_closes[::-1].index(max_high)
+        # Find the highest high in the lookback window (left wall / peak).
+        max_high = max(vcp_highs)
+        max_high_local_idx = vcp_highs.index(max_high)
 
-        # Need at least 15 bars after the peak for contractions to form
+        # Need at least 10 bars after the peak for contractions to form
         remaining_bars = len(vcp_highs) - max_high_local_idx
-        if remaining_bars < 15:
+        if remaining_bars < 10:
             return _early_exit_with_cup()
 
         # Map local VCP index to full-array index for uptrend validation
@@ -432,18 +431,17 @@ class PatternDetector:
             closes, peak_full_idx, uptrend_bars=90
         )
 
-        if uptrend_gain is not None and uptrend_gain < 20:
+        if uptrend_gain is not None and uptrend_gain < 15:
             # No meaningful uptrend -- sideways chop, not a VCP
             return _early_exit_with_cup()
 
         # --- Step 1b: Validate base depth (correction from peak) ---
-        # Minervini looks for bases with 10-50% correction from the peak.
-        # < 10% is just noise (not a real base), > 50% is a broken stock.
+        # Tight bases (7-10%) are premium setups; > 50% is a broken stock.
         post_peak_lows = vcp_lows[max_high_local_idx:]
         if post_peak_lows:
             deepest_low = min(post_peak_lows)
             base_depth_pct = ((max_high - deepest_low) / max_high) * 100
-            if base_depth_pct < 10 or base_depth_pct > 50:
+            if base_depth_pct < 7 or base_depth_pct > 50:
                 return _early_exit_with_cup()
 
         # --- Step 2: Multi-scale swing-point detection (N=3 + N=5) ---
@@ -464,10 +462,15 @@ class PatternDetector:
         if len(contractions) < 2:
             return _early_exit_with_cup()
 
+        # Freshness gate: the last contraction must still be recent
+        bars_since_last_contraction = len(vcp_highs) - 1 - contractions[-1]['low_idx']
+        if bars_since_last_contraction > 30:
+            return _early_exit_with_cup()
+
         # --- Step 4: Tightening and higher lows ---
         atr = peak_atr
         atr_pct = peak_atr_pct
-        atr_tolerance = min(atr_pct * 0.5, 1.5) if atr_pct else 1.0
+        atr_tolerance = min(atr_pct * 0.3, 1.0) if atr_pct else 1.0
 
         # Backward consecutive tightening (recent matters most)
         backward_tightening = 1
@@ -502,6 +505,11 @@ class PatternDetector:
             descending_high_count / (len(contractions) - 1)
             if len(contractions) > 1 else 0
         )
+
+        # Descending highs are a defining VCP feature -- reject if fewer
+        # than half of consecutive contraction highs are descending.
+        if descending_high_ratio < 0.5:
+            return _early_exit_with_cup()
 
         # Higher lows -- graduated ratio
         higher_low_count = 0
@@ -571,8 +579,8 @@ class PatternDetector:
             elif base_duration > 65:
                 vcp_score -= 2
 
-        # Contraction count (10 pts max) -- 5 per contraction, capped at 2+
-        vcp_score += min(len(contractions) * 5, 10)
+        # Contraction count (9 pts max) -- 3 per contraction, need 3+ for full credit
+        vcp_score += min(len(contractions) * 3, 9)
 
         # Tightening quality (25 pts max) -- average of forward + backward ratios.
         # For 2-contraction patterns, require >= 30% narrowing for full marks.
