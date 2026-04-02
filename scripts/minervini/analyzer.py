@@ -17,7 +17,6 @@ from .volume import VolumeAnalyzer
 from .sector import SectorAnalyzer
 from .earnings import EarningsAnalyzer
 from .patterns import PatternDetector
-from .vcp_ascending import AscendingBaseDetector
 from .signals import SignalGenerator
 from .notifications import NotificationManager
 
@@ -64,7 +63,6 @@ class MinerviniAnalyzer:
         self.sector = SectorAnalyzer(self.conn)
         self.earnings = EarningsAnalyzer(self.conn)
         self.patterns = PatternDetector(self.conn)
-        self.vcp_detector = AscendingBaseDetector(self.conn)
         self.signals = SignalGenerator()
         self.notifications = NotificationManager(self.conn)
 
@@ -137,7 +135,7 @@ class MinerviniAnalyzer:
         relative_strength = self.rs.calculate_relative_strength(symbol, date)
 
         # Detect VCP pattern
-        vcp_data = self.vcp_detector.detect_vcp(symbol, date)
+        vcp_data = self.patterns.detect_vcp(symbol, date)
 
         # Detect Primary Base for IPOs/new issues
         list_date = ticker_details['list_date'] if ticker_details else None
