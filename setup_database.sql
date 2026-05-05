@@ -474,3 +474,16 @@ ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS macd_weekly_signal NUMERI
 -- ============================================================================
 
 ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS vcp_breakout_confirmed BOOLEAN DEFAULT FALSE;
+
+-- ============================================================================
+-- 2026-05-05: Gap Flag pattern detection
+-- Identifies stocks that gapped up to a 40-week high on high volume, pulled
+-- back near the 9 EMA, consolidated sideways on declining volume, and are
+-- now recovering toward the gap high.
+-- ============================================================================
+
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS gap_flag_detected BOOLEAN DEFAULT FALSE;
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS gap_flag_date DATE;           -- date of the qualifying gap-up bar
+ALTER TABLE minervini_metrics ADD COLUMN IF NOT EXISTS gap_flag_high NUMERIC(10,2);  -- gap day high = resistance/price target
+
+CREATE INDEX IF NOT EXISTS idx_gap_flag ON minervini_metrics(gap_flag_detected);

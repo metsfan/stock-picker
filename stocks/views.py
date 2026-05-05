@@ -87,6 +87,8 @@ class StockListView(SingleTableMixin, ListView):
                 db_models.Q(macd_weekly_value__gt=db_models.F('macd_weekly_signal')),
                 passes_minervini=True,
             )
+        elif filter_type == 'gap_flag':
+            queryset = queryset.filter(gap_flag_detected=True)
         elif filter_type == 'rally_leaders':
             queryset = self._apply_rally_leaders_filter(queryset, latest_date)
         
@@ -278,6 +280,7 @@ class StockListView(SingleTableMixin, ListView):
                 passes_minervini=True,
             ).count()
             context['rally_leaders_count'] = self._rally_leaders_count(all_stocks, latest_date)
+            context['gap_flag_count'] = all_stocks.filter(gap_flag_detected=True).count()
             context['upcoming_earnings_count'] = all_stocks.filter(has_upcoming_earnings=True).count()
             context['new_issue_count'] = all_stocks.filter(is_new_issue=True).count()
             

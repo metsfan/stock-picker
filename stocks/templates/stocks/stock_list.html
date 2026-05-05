@@ -47,6 +47,9 @@
                         <a href="?filter=rally_leaders&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'rally_leaders' %}danger{% else %}outline-danger{% endif %}" title="Post-correction rally leaders: 4%+ day, 1.5x+ volume, RS 70+, Stage 1-2">
                             🚀 Rally Leaders ({{ rally_leaders_count }})
                         </a>
+                        <a href="?filter=gap_flag&cap={{ current_cap }}{% if current_earnings %}&earnings={{ current_earnings }}{% endif %}{% if current_new_issue %}&new_issue={{ current_new_issue }}{% endif %}" class="btn btn-{% if current_filter == 'gap_flag' %}warning{% else %}outline-warning{% endif %}" title="Gapped to 40-week high on high volume, pulled back near 9 EMA, consolidating on declining volume, recovering">
+                            🏁 Gap Flag ({{ gap_flag_count }})
+                        </a>
                     </div>
                     
                     <div class="btn-group me-2" role="group">

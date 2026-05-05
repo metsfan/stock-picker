@@ -131,6 +131,11 @@ class MinerviniMetrics(models.Model):
     holder_stop_trailing = models.DecimalField(max_digits=10, decimal_places=2, null=True)
     holder_trailing_method = models.CharField(max_length=20, null=True, blank=True)
 
+    # Gap Flag pattern fields
+    gap_flag_detected = models.BooleanField(default=False)
+    gap_flag_date = models.DateField(null=True)
+    gap_flag_high = models.DecimalField(max_digits=10, decimal_places=2, null=True)
+
     class Meta:
         db_table = 'minervini_metrics'
         managed = False  # Don't let Django manage this table

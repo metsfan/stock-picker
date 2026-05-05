@@ -137,6 +137,9 @@ class MinerviniAnalyzer:
         # Detect VCP pattern
         vcp_data = self.patterns.detect_vcp(symbol, date)
 
+        # Detect Gap Flag pattern
+        gap_flag_data = self.patterns.detect_gap_flag(symbol, date)
+
         # Detect Primary Base for IPOs/new issues
         list_date = ticker_details['list_date'] if ticker_details else None
         primary_base_data = self.patterns.detect_primary_base(symbol, date, list_date)
@@ -384,6 +387,10 @@ class MinerviniAnalyzer:
             'primary_base_correction_pct': primary_base_data['primary_base_correction_pct'],
             'primary_base_status': primary_base_data['primary_base_status'],
             'days_since_ipo': primary_base_data['days_since_ipo'],
+            # Gap Flag pattern
+            'gap_flag_detected': gap_flag_data['gap_flag_detected'],
+            'gap_flag_date':     gap_flag_data['gap_flag_date'],
+            'gap_flag_high':     gap_flag_data['gap_flag_high'],
             # MACD (populated by fetch_macd.py after analysis)
             'macd_daily_value': None,
             'macd_daily_signal': None,

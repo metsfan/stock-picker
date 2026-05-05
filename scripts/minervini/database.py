@@ -105,12 +105,14 @@ class DatabaseManager:
              cup_detected, cup_depth_pct, cup_duration_weeks,
              handle_detected, handle_depth_pct, handle_duration_weeks,
              handle_has_vcp, pattern_type,
-             macd_daily_value, macd_daily_signal, macd_weekly_value, macd_weekly_signal)
+             macd_daily_value, macd_daily_signal, macd_weekly_value, macd_weekly_signal,
+             gap_flag_detected, gap_flag_date, gap_flag_high)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s)
             ON CONFLICT (symbol, date)
             DO UPDATE SET
                 close_price = EXCLUDED.close_price,
@@ -193,7 +195,10 @@ class DatabaseManager:
                 macd_daily_value = COALESCE(EXCLUDED.macd_daily_value, minervini_metrics.macd_daily_value),
                 macd_daily_signal = COALESCE(EXCLUDED.macd_daily_signal, minervini_metrics.macd_daily_signal),
                 macd_weekly_value = COALESCE(EXCLUDED.macd_weekly_value, minervini_metrics.macd_weekly_value),
-                macd_weekly_signal = COALESCE(EXCLUDED.macd_weekly_signal, minervini_metrics.macd_weekly_signal)
+                macd_weekly_signal = COALESCE(EXCLUDED.macd_weekly_signal, minervini_metrics.macd_weekly_signal),
+                gap_flag_detected = EXCLUDED.gap_flag_detected,
+                gap_flag_date = EXCLUDED.gap_flag_date,
+                gap_flag_high = EXCLUDED.gap_flag_high
         """, (
             metrics['symbol'],
             metrics['date'],
@@ -278,6 +283,9 @@ class DatabaseManager:
             metrics.get('macd_daily_signal'),
             metrics.get('macd_weekly_value'),
             metrics.get('macd_weekly_signal'),
+            metrics.get('gap_flag_detected', False),
+            metrics.get('gap_flag_date'),
+            metrics.get('gap_flag_high'),
         ))
 
         self.conn.commit()
@@ -355,12 +363,14 @@ class DatabaseManager:
                      cup_detected, cup_depth_pct, cup_duration_weeks,
                      handle_detected, handle_depth_pct, handle_duration_weeks,
                      handle_has_vcp, pattern_type,
-                     macd_daily_value, macd_daily_signal, macd_weekly_value, macd_weekly_signal)
+                     macd_daily_value, macd_daily_signal, macd_weekly_value, macd_weekly_signal,
+                     gap_flag_detected, gap_flag_date, gap_flag_high)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s)
                     ON CONFLICT (symbol, date)
                     DO UPDATE SET
                         close_price = EXCLUDED.close_price,
@@ -443,7 +453,10 @@ class DatabaseManager:
                         macd_daily_value = COALESCE(EXCLUDED.macd_daily_value, minervini_metrics.macd_daily_value),
                         macd_daily_signal = COALESCE(EXCLUDED.macd_daily_signal, minervini_metrics.macd_daily_signal),
                         macd_weekly_value = COALESCE(EXCLUDED.macd_weekly_value, minervini_metrics.macd_weekly_value),
-                        macd_weekly_signal = COALESCE(EXCLUDED.macd_weekly_signal, minervini_metrics.macd_weekly_signal)
+                        macd_weekly_signal = COALESCE(EXCLUDED.macd_weekly_signal, minervini_metrics.macd_weekly_signal),
+                        gap_flag_detected = EXCLUDED.gap_flag_detected,
+                        gap_flag_date = EXCLUDED.gap_flag_date,
+                        gap_flag_high = EXCLUDED.gap_flag_high
                 """, (
                     metrics['symbol'],
                     metrics['date'],
@@ -528,6 +541,9 @@ class DatabaseManager:
                     metrics.get('macd_daily_signal'),
                     metrics.get('macd_weekly_value'),
                     metrics.get('macd_weekly_signal'),
+                    metrics.get('gap_flag_detected', False),
+                    metrics.get('gap_flag_date'),
+                    metrics.get('gap_flag_high'),
                 ))
 
             self.conn.commit()

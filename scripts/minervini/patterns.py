@@ -1086,3 +1086,185 @@ class PatternDetector:
             result['primary_base_status'] = 'FORMING'
 
         return result
+
+    # ------------------------------------------------------------------
+    # Gap Flag detection
+    # ------------------------------------------------------------------
+
+    def detect_gap_flag(self, symbol, end_date):
+        """
+        Detect the "Gap Flag" pattern: a stock that gapped up to a 40-week
+        high on high volume, pulled back near the 9 EMA, consolidated
+        sideways on declining volume, and is now recovering toward the gap.
+
+        Four required phases:
+          1. Gap: 3%+ overnight gap to a 40-week high, 1.5x+ avg volume,
+                  within the past 10-60 trading days.
+          2. Pullback: after the gap, price came within 5% of the 9 EMA
+                  (low <= ema_9 * 1.05 on at least one bar post-gap).
+          3. Consolidation: after the near-EMA touch, closes are tight
+                  (std dev < 8% of mean) AND volume is declining
+                  (second-half avg < first-half avg).
+          4. Recovery: current close > 9 EMA AND current close is no more
+                  than 10% below the gap high (close >= gap_high * 0.90).
+
+        Args:
+            symbol: Stock ticker symbol
+            end_date: Analysis date string "YYYY-MM-DD"
+
+        Returns:
+            dict with keys: gap_flag_detected (bool), gap_flag_date (date|None),
+                            gap_flag_high (float|None)
+        """
+        empty = {'gap_flag_detected': False, 'gap_flag_date': None, 'gap_flag_high': None}
+
+        cursor = self.conn.cursor()
+        # Load 280 bars: 200 for 40-week baseline + up to 60 for gap window + buffer
+        cursor.execute("""
+            SELECT date, open, high, low, close, volume
+            FROM stock_prices
+            WHERE symbol = %s AND date <= %s
+            ORDER BY date DESC
+            LIMIT 280
+        """, (symbol, end_date))
+        rows = cursor.fetchall()
+        cursor.close()
+
+        if len(rows) < 70:
+            return empty
+
+        # Reverse so oldest bar is index 0
+        rows = list(reversed(rows))
+        n = len(rows)
+
+        dates   = [row[0] for row in rows]
+        opens   = [float(row[1]) for row in rows]
+        highs   = [float(row[2]) for row in rows]
+        lows    = [float(row[3]) for row in rows]
+        closes  = [float(row[4]) for row in rows]
+        volumes = [float(row[5]) for row in rows]
+
+        # ----------------------------------------------------------
+        # Build rolling 9 EMA over all bars (oldest-first)
+        # ----------------------------------------------------------
+        ema_period = 9
+        multiplier = 2 / (ema_period + 1)
+        ema9 = [None] * n
+        if n >= ema_period:
+            seed = sum(closes[:ema_period]) / ema_period
+            ema9[ema_period - 1] = seed
+            for i in range(ema_period, n):
+                ema9[i] = (closes[i] - ema9[i - 1]) * multiplier + ema9[i - 1]
+
+        # ----------------------------------------------------------
+        # Phase 1: find a qualifying gap day (10-60 bars from end)
+        # ----------------------------------------------------------
+        # Search window: bars at indices (n-60) through (n-10)
+        search_start = max(ema_period, n - 60)
+        search_end   = n - 10
+
+        if search_start >= search_end:
+            return empty
+
+        gap_idx = None
+        gap_high = None
+        gap_date = None
+
+        for i in range(search_start, search_end):
+            # Need at least 200 bars before this bar for 40-week high
+            if i < 200:
+                continue
+
+            prev_close = closes[i - 1]
+            if prev_close <= 0:
+                continue
+
+            gap_pct = (opens[i] - prev_close) / prev_close
+            if gap_pct < 0.03:
+                continue
+
+            # 40-week high = highest high over the 200 bars ending the day BEFORE the gap
+            w40_high = max(highs[i - 200:i])
+
+            if highs[i] < w40_high * 0.97:
+                continue
+
+            # Volume must be 1.5x the 50-bar average volume (bars before the gap)
+            vol_window = volumes[max(0, i - 50):i]
+            if not vol_window:
+                continue
+            avg_vol = sum(vol_window) / len(vol_window)
+            if avg_vol <= 0 or volumes[i] < avg_vol * 1.5:
+                continue
+
+            # Qualifying gap found — keep the most recent one
+            gap_idx  = i
+            gap_high = highs[i]
+            gap_date = dates[i]
+
+        if gap_idx is None:
+            return empty
+
+        # ----------------------------------------------------------
+        # Phase 2: find a near-9-EMA touch after the gap
+        # ----------------------------------------------------------
+        touch_idx = None
+        for i in range(gap_idx + 1, n):
+            if ema9[i] is None:
+                continue
+            if lows[i] <= ema9[i] * 1.05:
+                touch_idx = i
+                break
+
+        if touch_idx is None:
+            return empty
+
+        # ----------------------------------------------------------
+        # Phase 3: consolidation from touch to present
+        # ----------------------------------------------------------
+        consol_closes  = closes[touch_idx:]
+        consol_volumes = volumes[touch_idx:]
+
+        # Need at least 3 bars to measure anything
+        if len(consol_closes) < 3:
+            return empty
+
+        mean_close = sum(consol_closes) / len(consol_closes)
+        if mean_close <= 0:
+            return empty
+
+        variance = sum((c - mean_close) ** 2 for c in consol_closes) / len(consol_closes)
+        std_dev  = variance ** 0.5
+        cv = std_dev / mean_close  # coefficient of variation
+
+        if cv >= 0.08:
+            return empty
+
+        # Volume declining: compare first-half avg to second-half avg
+        mid = len(consol_volumes) // 2
+        if mid > 0:
+            first_half_avg  = sum(consol_volumes[:mid]) / mid
+            second_half_avg = sum(consol_volumes[mid:]) / max(len(consol_volumes) - mid, 1)
+            if first_half_avg > 0 and second_half_avg >= first_half_avg:
+                return empty
+
+        # ----------------------------------------------------------
+        # Phase 4: recovery condition at the current (last) bar
+        # ----------------------------------------------------------
+        current_close = closes[-1]
+        current_ema9  = ema9[-1]
+
+        if current_ema9 is None:
+            return empty
+
+        if current_close <= current_ema9:
+            return empty
+
+        if current_close < gap_high * 0.90:
+            return empty
+
+        return {
+            'gap_flag_detected': True,
+            'gap_flag_date':     gap_date,
+            'gap_flag_high':     round(gap_high, 2),
+        }
